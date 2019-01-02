@@ -695,8 +695,8 @@ struct taskToken {
 };
 
 // Function Definitions
-typedef __int64(__fastcall *EnqueueTaskWithoutParam_t)(__int64 callbackFunction, uint8_t nextFunctionIndex, uint8_t r8b, taskToken taskToken);
-typedef DWORD*(__fastcall *	EnqueueTaskWithParam_t)(__int64 callbackFunction, uint8_t nextFunctionIndex, __int64 a3, unsigned __int64 a4, taskToken taskToken, char* taskName);
+typedef __int64(__fastcall *EnqueueTaskWithoutParam_t)(__int64 callbackFunction, uint8_t nextFunctionIndex, uint8_t r8b, unsigned int taskToken);
+typedef DWORD*(__fastcall *	EnqueueTaskWithParam_t)(__int64 callbackFunction, uint8_t nextFunctionIndex, __int64 a3, unsigned __int64 a4, unsigned int taskToken, char* taskName);
 typedef __int64(__fastcall* npc_Callback_Enqueue_t)(uint8_t a1, int a2, int a3);
 
 
@@ -708,12 +708,8 @@ EnqueueTaskWithParam_t		EnqueueTaskWithParamCall;
 EnqueueTaskWithoutParam_t	origEnqueueTaskWithoutParam;
 EnqueueTaskWithParam_t		origEnqueueTaskWithParam;
 
-//#define TASK_LOG
-char queuetaskTokBuffer[4];
-char queuetaskTokBufferNoParam[4];
-
-__int64 EnqueueTaskWithoutParam(__int64 callbackFunction, uint8_t nextFunctionIndex, uint8_t r8b, taskToken taskToken);
-DWORD* EnqueueTaskWithParam(__int64 callbackFunction, uint8_t nextFunctionIndex, __int64 a3, unsigned __int64 a4, taskToken taskToken, char* taskName);
+__int64 EnqueueTaskWithoutParam(__int64 callbackFunction, uint8_t nextFunctionIndex, uint8_t r8b, unsigned int taskToken);
+DWORD* EnqueueTaskWithParam(__int64 callbackFunction, uint8_t nextFunctionIndex, __int64 a3, unsigned __int64 a4, unsigned int taskToken, char* taskName);
 
 typedef signed __int64(__stdcall *charDispCheck_t)();
 typedef __int64(__stdcall *MainLoop_t) ();
@@ -1006,30 +1002,20 @@ struct appConsole
 static appConsole console;
 
 
-__int64 EnqueueTaskWithoutParam(__int64 callbackFunction, uint8_t nextFunctionIndex, uint8_t r8b, taskToken taskToken) {
+__int64 EnqueueTaskWithoutParam(__int64 callbackFunction, uint8_t nextFunctionIndex, uint8_t r8b, unsigned int taskToken) {
 	__int64 result = origEnqueueTaskWithoutParam(callbackFunction, nextFunctionIndex, r8b, taskToken);
-
 #	ifdef _DEBUG
-	memset(queuetaskTokBufferNoParam, 0x00, 4);
-	sprintf(queuetaskTokBufferNoParam, "%c%c%c%c", taskToken.one, taskToken.two, taskToken.three, taskToken.four);
-
-	printf("EnqueueTaskWithoutParam(0x%Ix,%x,%x,\"%s\") returned 0x%Ix\n", callbackFunction, nextFunctionIndex, r8b, queuetaskTokBufferNoParam, result);
-	console.AddLog("EnqueueTaskWithoutParam(0x%Ix,%x,%x,\"%s\") returned 0x%Ix\n", callbackFunction, nextFunctionIndex, r8b, queuetaskTokBufferNoParam, result);
+	printf("EnqueueTaskWithoutParam(0x%Ix,0x%x,0x%x,0x%x) returned 0x%Ix\n", callbackFunction, nextFunctionIndex, r8b, taskToken, result);
+	console.AddLog("EnqueueTaskWithoutParam(0x%Ix,0x%x,0x%x,0x%Ix) returned 0x%Ix\n", callbackFunction, nextFunctionIndex, r8b, taskToken, result);
 #	endif
-
 	return result;
 }
-DWORD* EnqueueTaskWithParam(__int64 callbackFunction, uint8_t nextFunctionIndex, __int64 a3, unsigned __int64 a4, taskToken taskToken, char* taskName) {
+DWORD* EnqueueTaskWithParam(__int64 callbackFunction, uint8_t nextFunctionIndex, __int64 a3, unsigned __int64 a4, unsigned int taskToken, char* taskName) {
 	DWORD* result = origEnqueueTaskWithParam(callbackFunction, nextFunctionIndex, a3, a4, taskToken, taskName);
-
 #	ifdef _DEBUG
-	memset(queuetaskTokBuffer, 0x00, 4);
-	sprintf(queuetaskTokBuffer, "%c%c%c%c", taskToken.one, taskToken.two, taskToken.three, taskToken.four);
-
-	printf("EnqueueTaskWithParam(0x%Ix,%x,%Ix,%Ix,\"%s\",\"%s\") returned 0x%08x\n", callbackFunction, nextFunctionIndex, a3, a4, queuetaskTokBuffer, taskName, result);
-	console.AddLog("EnqueueTaskWithParam(0x%Ix,%x,%Ix,%Ix,\"%s\",\"%s\") returned 0x%08x\n", callbackFunction, nextFunctionIndex, a3, a4, queuetaskTokBuffer, taskName, result);
+	printf("EnqueueTaskWithParam(0x%Ix,0x%x,0x%Ix,0x%Ix,0x%x,\"%s\") returned 0x%x\n", callbackFunction, nextFunctionIndex, a3, a4, taskToken, taskName, result);
+	console.AddLog("EnqueueTaskWithParam(0x%Ix,0x%x,0x%Ix,0x%Ix,0x%x,\"%s\") returned 0x%x\n", callbackFunction, nextFunctionIndex, a3, a4, taskToken, taskName, result);
 #	endif
-
 	return result;
 }
 
