@@ -83,7 +83,7 @@
     <LinkIncremental>true</LinkIncremental>
     <IncludePath>$(SolutionDir)3rd\minhook\include;$(SolutionDir)include;$(ProjectDir)imgui;$(IncludePath)</IncludePath>
     <OutDir>$(SolutionDir)bin\$(PlatformShortName)\</OutDir>
-    <LibraryPath>H:\Indicium-Supra\bin\x64\;$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(NETFXKitsDir)Lib\um\x64</LibraryPath>
+    <LibraryPath>$(SolutionDir)\bin\x64\;$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(NETFXKitsDir)Lib\um\x64</LibraryPath>
     <TargetName>Forklift</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -128,7 +128,7 @@
       <AdditionalDependencies>Indicium-Supra.lib;Iphlpapi.lib;d3d9.lib;d3d10.lib;d3d11.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /Y $(SolutionDir)bin\$(PlatformShortName)\Forklift.dll "E:\Games\Shenmue I and II\sm2\Forklift.dll"</Command>
+      <Command>xcopy /Q /Y $(SolutionDir)bin\$(PlatformShortName)\Forklift.dll "E:\Games\Shenmue I and II\sm2\Forklift.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
