@@ -1036,12 +1036,6 @@ void RenderScene()
 		{
 			if(ImGui::Button("Invisible Ryo!"))
 			{
-				taskToken tk;
-				tk.one		= 0x54;
-				tk.two		= 0x4E;
-				tk.three	= 0x56;
-				tk.four		= 0x45;
-
 				//EnqueueTaskWithoutParam((baseAddr + EGACH_EVT_SET_RYO_ALPHA_TRUE), 0x0, 0x0, tk);
 			}
 
