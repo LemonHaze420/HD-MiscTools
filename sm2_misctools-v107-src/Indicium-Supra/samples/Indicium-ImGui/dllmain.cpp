@@ -588,6 +588,7 @@ void Hooked_DbgPrint(char * msg, ...)
 	va_list args;
 	va_start(args, msg);
 	vsprintf(buffer, msg, args);
+	iHooked_DbgPrint(msg, args);
 	va_end(args);
 
 	printf(buffer);
@@ -698,6 +699,7 @@ typedef __int64(__fastcall *EnqueueTaskWithoutParam_t)(__int64 callbackFunction,
 typedef DWORD*(__fastcall *	EnqueueTaskWithParam_t)(__int64 callbackFunction, uint8_t nextFunctionIndex, __int64 a3, unsigned __int64 a4, taskToken taskToken, char* taskName);
 typedef __int64(__fastcall* npc_Callback_Enqueue_t)(uint8_t a1, int a2, int a3);
 
+
 npc_Callback_Enqueue_t		npc_Callback_Enqueue;
 EnqueueTaskWithoutParam_t	EnqueueTaskWithoutParamCall;
 EnqueueTaskWithParam_t		EnqueueTaskWithParamCall;
@@ -719,34 +721,11 @@ typedef __int64(__stdcall *MainLoop_t) ();
 charDispCheck_t origCharDispCheck;
 MainLoop_t origMainLoop;
 
-struct Task {
-	uint64_t* callbackPtr;
-	char* taskName;
-	uint8_t _unk1, _unk2;
-	uint64_t* unkPtr;
-	uint64_t* nextTaskAddress;
-	uint64_t* taskQueueAddress;
-	uint64_t* _unk3;
-	uint64_t* _unk4;
-	uint64_t* _unk5;
-	uint64_t* _unk6;
-	uint64_t* _unk7;
-	uint64_t* _unk8;
-	uint64_t* _unk9;
-	uint64_t* _unk10;
-	uint64_t* callbackParamStructPtr;
-};
-struct TaskQueue {
-	Task tasks[300];
-}taskQueue;
-
-
 signed __int64 charDispCheck(){
 	return origCharDispCheck();
 }
 
 __int64 MainLoop() {
-
 	return origMainLoop();
 }
 
@@ -1054,8 +1033,6 @@ DWORD* EnqueueTaskWithParam(__int64 callbackFunction, uint8_t nextFunctionIndex,
 	return result;
 }
 
-std::string stringz[5];
-
 void RenderScene()
 {
 	static std::once_flag flag;
@@ -1247,11 +1224,13 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 			EnqueueTaskWithParamCall = (EnqueueTaskWithParam_t)(baseAddr + 0x49DA10);
 			npc_Callback_Enqueue = (npc_Callback_Enqueue_t)(baseAddr + 0x5003E0);
 
+			DWORD_PTR dbgPrintfHook = baseAddr + 0x3575F0;
 			DWORD_PTR mainLoopHook = baseAddr + 0x49CF90;
 			DWORD_PTR charDispCheckHook = baseAddr + 0x443C70;
-
 			DWORD_PTR EnqueueTaskWithoutParamHook = baseAddr + 0x49D890;
 			DWORD_PTR EnqueueTaskWithParamHook = baseAddr + 0x49DA10;
+
+			MH_CreateHook(reinterpret_cast<void*>(dbgPrintfHook), Hooked_DbgPrint, reinterpret_cast<void**>(&iHooked_DbgPrint));
 
 			MH_CreateHook(reinterpret_cast<void*>(mainLoopHook), MainLoop, reinterpret_cast<void**>(&origMainLoop));
 			MH_CreateHook(reinterpret_cast<void*>(charDispCheckHook), charDispCheck, reinterpret_cast<void**>(&origCharDispCheck));
@@ -1261,6 +1240,9 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 
 			MH_STATUS status = MH_EnableHook(reinterpret_cast<void*>(mainLoopHook));
 			printf("mainLoopHook returned %d\n", status);
+
+			status = MH_EnableHook(reinterpret_cast<void*>(dbgPrintfHook));
+			printf("dbgPrintfHook returned %d\n", status);
 
 			status = MH_EnableHook(reinterpret_cast<void*>(charDispCheckHook));
 			printf("charDispCheckHook returned %d\n", status);
@@ -1297,8 +1279,6 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 		temp_camerastate = *(int*)(baseAddr + SHENMUE2_V107_CAMSTATE);
 		temp_freezetime = *(int*)(baseAddr + SHENMUE2_V107_FREEZETIME);
 		fFPS = (1000.0f / fFrameTime);
-
-		taskQueue = *(TaskQueue*)(baseAddr + 0x81FFA50);
 
 		if (baseAddr != NULL && force_timemultiplier) {
 			unsigned char const * p = reinterpret_cast<unsigned char const *>(&timeMultiplier);
