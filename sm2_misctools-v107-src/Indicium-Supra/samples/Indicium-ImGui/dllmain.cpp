@@ -21,12 +21,16 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
+//#define RELEASE
+
 
 #include "dllmain.h"
 #include "addrs.h"
+
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 #define GLOBAL_HOTKEYS f9,f10,f11
 #define GLOBAL_HOTKEYS_NUM 3
+
 #define GetKey(x) (key.VirtualKey == x && !key.pressedBefore&& key.pressedNow)
 
 struct KeyPress {
@@ -581,6 +585,9 @@ void* debugBufferPatch = nullptr;
 typedef void(__stdcall *Hooked_DbgPrint_t) (char*, ...);
 Hooked_DbgPrint_t iHooked_DbgPrint;
 
+DWORD_PTR loggerAddr	 = 0x0;
+DWORD_PTR origLoggerAddr = 0x0;
+
 void Hooked_DbgPrint(char * msg, ...)
 {
 	char buffer[512];
@@ -679,14 +686,19 @@ int temp_camerastate = 0;
 int user_freezetime = 0;
 int temp_freezetime = 0;
 
+BYTE day, month, year, hour, minute, seconds;
+
 bool force_freezetime = false;
 bool toggle_camerastate = false;
 
 bool first_coords = true;
 
-#define SHENMUE2
+bool show_tasks_in_console = false;
+bool show_logger_in_console = false;
+
 std::vector<KeyPress> keyPresses;
 
+#ifndef RELEASE
 struct taskToken {
 	char one;
 	char two;
@@ -696,9 +708,21 @@ struct taskToken {
 
 // Function Definitions
 typedef __int64(__fastcall *EnqueueTaskWithoutParam_t)(__int64 callbackFunction, uint8_t nextFunctionIndex, uint8_t r8b, unsigned int taskToken);
-typedef DWORD*(__fastcall *	EnqueueTaskWithParam_t)(__int64 callbackFunction, uint8_t nextFunctionIndex, __int64 a3, unsigned __int64 a4, unsigned int taskToken, char* taskName);
+typedef __int64(__fastcall *EnqueueTaskWithParam_t)(__int64 callbackFunction, uint8_t nextFunctionIndex, __int64 a3, __int64 param, unsigned int taskToken, char* taskName);
 typedef __int64(__fastcall* npc_Callback_Enqueue_t)(uint8_t a1, int a2, int a3);
+typedef signed __int64(__fastcall* NPC_Cleanup_Func_1_t)(__int64 a1);
+typedef signed __int64(__fastcall* GetTaskParameterPointer_t)(__int64 a1);
 
+struct cameraSwitch {
+	uint32_t f0;
+	int32_t f4;
+};
+typedef void(__fastcall* SwitchCameraMode_t)(struct cameraSwitch* cs);
+
+SwitchCameraMode_t			SwitchCameraMode;
+
+NPC_Cleanup_Func_1_t		sub_1404796D0;
+GetTaskParameterPointer_t	GetTaskParameterPointer;
 
 npc_Callback_Enqueue_t		npc_Callback_Enqueue;
 EnqueueTaskWithoutParam_t	EnqueueTaskWithoutParamCall;
@@ -709,7 +733,7 @@ EnqueueTaskWithoutParam_t	origEnqueueTaskWithoutParam;
 EnqueueTaskWithParam_t		origEnqueueTaskWithParam;
 
 __int64 EnqueueTaskWithoutParam(__int64 callbackFunction, uint8_t nextFunctionIndex, uint8_t r8b, unsigned int taskToken);
-DWORD* EnqueueTaskWithParam(__int64 callbackFunction, uint8_t nextFunctionIndex, __int64 a3, unsigned __int64 a4, unsigned int taskToken, char* taskName);
+__int64 EnqueueTaskWithParam(__int64 callbackFunction, uint8_t nextFunctionIndex, __int64 a3, __int64 param, unsigned int taskToken, char* taskName);
 
 typedef signed __int64(__stdcall *charDispCheck_t)();
 typedef __int64(__stdcall *MainLoop_t) ();
@@ -724,7 +748,6 @@ signed __int64 charDispCheck(){
 __int64 MainLoop() {
 	return origMainLoop();
 }
-
 static bool bDrawConsole = true;
 
 struct appConsole
@@ -1001,22 +1024,34 @@ struct appConsole
 
 static appConsole console;
 
-
 __int64 EnqueueTaskWithoutParam(__int64 callbackFunction, uint8_t nextFunctionIndex, uint8_t r8b, unsigned int taskToken) {
 	__int64 result = origEnqueueTaskWithoutParam(callbackFunction, nextFunctionIndex, r8b, taskToken);
 #	ifdef _DEBUG
-	printf("EnqueueTaskWithoutParam(0x%Ix,0x%x,0x%x,0x%x) returned 0x%Ix\n", callbackFunction, nextFunctionIndex, r8b, taskToken, result);
-	console.AddLog("EnqueueTaskWithoutParam(0x%Ix,0x%x,0x%x,0x%Ix) returned 0x%Ix\n", callbackFunction, nextFunctionIndex, r8b, taskToken, result);
+	if(show_tasks_in_console)
+		printf("EnqueueTaskWithoutParam(0x%Ix,0x%x,0x%x,0x%08x) returned 0x%Ix\n", callbackFunction, nextFunctionIndex, r8b, taskToken, result);
+
+	console.AddLog("EnqueueTaskWithoutParam(0x%Ix,0x%x,0x%x,0x%08x) returned 0x%Ix\n", callbackFunction, nextFunctionIndex, r8b, taskToken, result);
 #	endif
 	return result;
 }
-DWORD* EnqueueTaskWithParam(__int64 callbackFunction, uint8_t nextFunctionIndex, __int64 a3, unsigned __int64 a4, unsigned int taskToken, char* taskName) {
-	DWORD* result = origEnqueueTaskWithParam(callbackFunction, nextFunctionIndex, a3, a4, taskToken, taskName);
+__int64 EnqueueTaskWithParam(__int64 callbackFunction, uint8_t nextFunctionIndex, __int64 a3, __int64 param, unsigned int taskToken, char* taskName) {
+	__int64 result = origEnqueueTaskWithParam(callbackFunction, nextFunctionIndex, a3, param, taskToken, taskName);
 #	ifdef _DEBUG
-	printf("EnqueueTaskWithParam(0x%Ix,0x%x,0x%Ix,0x%Ix,0x%x,\"%s\") returned 0x%x\n", callbackFunction, nextFunctionIndex, a3, a4, taskToken, taskName, result);
-	console.AddLog("EnqueueTaskWithParam(0x%Ix,0x%x,0x%Ix,0x%Ix,0x%x,\"%s\") returned 0x%x\n", callbackFunction, nextFunctionIndex, a3, a4, taskToken, taskName, result);
+	if (show_tasks_in_console)
+		printf("EnqueueTaskWithParam(0x%Ix,0x%x,0x%Ix,0x%Ix,0x%x,\"%s\") returned 0x%Ix\n", callbackFunction, nextFunctionIndex, a3, param, taskToken, taskName, result);
+
+	console.AddLog("EnqueueTaskWithParam(0x%Ix,0x%x,0x%Ix,0x%Ix,0x%x,\"%s\") returned 0x%Ix\n", callbackFunction, nextFunctionIndex, a3, param, taskToken, taskName, result);
 #	endif
 	return result;
+}
+#endif
+
+__int64 __fastcall HookedLoggerFunc(char* msg, DWORD* a2, char* a3)
+{
+	if(show_logger_in_console)
+		printf("%s: %x %s\n", msg, a2, a3);
+
+	return 0i64;
 }
 
 void RenderScene()
@@ -1030,18 +1065,51 @@ void RenderScene()
 
 	if (show_overlay)
 	{
-		console.Draw("Tasks", &bDrawConsole);
+#		ifndef RELEASE
+			console.Draw("Tasks", &bDrawConsole);
+#		endif
 		
 		ImGui::Begin("Shenmue 2 v1.07 Misc Tools - LemonHaze", nullptr);
 		{
-			if(ImGui::Button("Invisible Ryo!"))
+			/*if(ImGui::Button("Clear NPCs!"))
 			{
-				//EnqueueTaskWithoutParam((baseAddr + EGACH_EVT_SET_RYO_ALPHA_TRUE), 0x0, 0x0, tk);
+				struct NPC_Clear_Param {
+					int64_t f0 = 0;
+					int64_t f8 = 0;
+					signed char pad20[4];
+					int32_t f20 = 0;
+				};
+				__int64 rax2 = EnqueueTaskWithParam((baseAddr + 0xC3650), 6, 11, 0x20, 0x544E5645, "(HLTaskFunc)EVT_AT_NPCClear");
+
+				sub_1404796D0(rax2);
+				
+				NPC_Clear_Param* rax3 = (NPC_Clear_Param*)GetTaskParameterPointer(rax2);
+				rax3->f0 = (baseAddr + 0x42050);
+				rax3->f20 = 0x40400000;
+			}*/
+
+			if (ImGui::Button("Switch Camera Mode"))
+			{
+				cameraSwitch cs;
+				cs.f0 = 8;
+
+				SwitchCameraMode(&cs);
 			}
 
 			ImGui::Separator();
+
+			ImGui::Text("F9  : Toggle Tasks Window");
+			ImGui::Text("F10 : Toggle Main Window");
+			ImGui::Text("F11 : Toggle Patches");
+			
+			ImGui::Separator();
+
+			ImGui::Text("Game Date: %d/%d/%d\nGame Time: %d:%d:%d\n", day, month, (1900 + year), hour, minute, seconds);
 			ImGui::Text("Frame: %0.2fms\nFPS: %0.2f\n", fFrameTime, fFPS);
-			ImGui::Text("F10 : Toggle Window");
+			
+			ImGui::Checkbox("Enable Tasks in Console", &show_tasks_in_console);	ImGui::SameLine();
+			ImGui::Checkbox("Enable Logger in Console", &show_logger_in_console);	ImGui::SameLine();
+
 			ImGui::Separator();
 
 			ImGui::Checkbox("Enable Patches", &ingame_status);	ImGui::SameLine();
@@ -1117,7 +1185,7 @@ void RenderScene()
 	for (auto& key : keyPresses)
 	{
 		if (GetAsyncKeyState(key.VirtualKey) & 0x8000) key.pressedNow = true; else { key.pressedBefore = false;	key.pressedNow = false; }
-		
+
 		if (GetKey(VK_F9)) {
 			bDrawConsole = !bDrawConsole;
 			key.pressedBefore = true;
@@ -1192,73 +1260,94 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 		if (!has_initialized)
 		{
 			MH_Initialize();
-
+			baseAddr = GetProcessBaseAddress(GetCurrentProcessId());
 			AllocConsole();
 			freopen("CON", "w", stdout);
 
-			baseAddr = GetProcessBaseAddress(GetCurrentProcessId());
 			printf("baseAddress: %Ix\n", baseAddr);
 
-			// Main loop hook: (SM2)	
-			EnqueueTaskWithoutParamCall = (EnqueueTaskWithoutParam_t)(baseAddr + 0x49D890);
-			EnqueueTaskWithParamCall = (EnqueueTaskWithParam_t)(baseAddr + 0x49DA10);
-			npc_Callback_Enqueue = (npc_Callback_Enqueue_t)(baseAddr + 0x5003E0);
+#			ifndef RELEASE
+				AllocConsole();
+				freopen("CON", "w", stdout);
+				
+				// Main loop hook: (SM2)	
+				EnqueueTaskWithoutParamCall = (EnqueueTaskWithoutParam_t)(baseAddr + SHENMUE2_V107_ENQUEUETASKWITHOUTPARAM);
+				EnqueueTaskWithParamCall = (EnqueueTaskWithParam_t)(baseAddr + SHENMUE2_V107_ENQUEUETASKWITHPARAM);
+				npc_Callback_Enqueue = (npc_Callback_Enqueue_t)(baseAddr + SHENMUE2_V107_NPC_CALLBACK_ENQUEUE);
 
-			DWORD_PTR dbgPrintfHook = baseAddr + 0x3575F0;
-			DWORD_PTR mainLoopHook = baseAddr + 0x49CF90;
-			DWORD_PTR charDispCheckHook = baseAddr + 0x443C70;
-			DWORD_PTR EnqueueTaskWithoutParamHook = baseAddr + 0x49D890;
-			DWORD_PTR EnqueueTaskWithParamHook = baseAddr + 0x49DA10;
+				sub_1404796D0 = (NPC_Cleanup_Func_1_t)(baseAddr + 0x4796D0);
+				GetTaskParameterPointer = (GetTaskParameterPointer_t)(baseAddr + SHENMUE2_V107_GETTASKPARAMPTR);
 
-			MH_CreateHook(reinterpret_cast<void*>(dbgPrintfHook), Hooked_DbgPrint, reinterpret_cast<void**>(&iHooked_DbgPrint));
+				SwitchCameraMode = (SwitchCameraMode_t)(baseAddr + SHENMUE2_V107_SWITCHCAMERAMODE);
 
-			MH_CreateHook(reinterpret_cast<void*>(mainLoopHook), MainLoop, reinterpret_cast<void**>(&origMainLoop));
-			MH_CreateHook(reinterpret_cast<void*>(charDispCheckHook), charDispCheck, reinterpret_cast<void**>(&origCharDispCheck));
+				DWORD_PTR dbgPrintfHook = baseAddr + SHENMUE2_V107_DBGPRINTF;
+				DWORD_PTR mainLoopHook = baseAddr + SHENMUE2_V107_MAINLOOP;
+				DWORD_PTR charDispCheckHook = baseAddr + SHENMUE2_V107_CHARDISPCHECK;
+				DWORD_PTR EnqueueTaskWithoutParamHook = baseAddr + SHENMUE2_V107_ENQUEUETASKWITHOUTPARAM;
+				DWORD_PTR EnqueueTaskWithParamHook = baseAddr + SHENMUE2_V107_ENQUEUETASKWITHPARAM;
 
-			MH_CreateHook(reinterpret_cast<void*>(EnqueueTaskWithParamHook), EnqueueTaskWithParam, reinterpret_cast<void**>(&origEnqueueTaskWithParam));
-			MH_CreateHook(reinterpret_cast<void*>(EnqueueTaskWithoutParamHook), EnqueueTaskWithoutParam, reinterpret_cast<void**>(&origEnqueueTaskWithoutParam));
+				MH_CreateHook(reinterpret_cast<void*>(dbgPrintfHook), Hooked_DbgPrint, reinterpret_cast<void**>(&iHooked_DbgPrint));
 
-			MH_STATUS status = MH_EnableHook(reinterpret_cast<void*>(mainLoopHook));
-			printf("mainLoopHook returned %d\n", status);
+				MH_CreateHook(reinterpret_cast<void*>(mainLoopHook), MainLoop, reinterpret_cast<void**>(&origMainLoop));
+				MH_CreateHook(reinterpret_cast<void*>(charDispCheckHook), charDispCheck, reinterpret_cast<void**>(&origCharDispCheck));
 
-			status = MH_EnableHook(reinterpret_cast<void*>(dbgPrintfHook));
-			printf("dbgPrintfHook returned %d\n", status);
+				MH_CreateHook(reinterpret_cast<void*>(EnqueueTaskWithParamHook), EnqueueTaskWithParam, reinterpret_cast<void**>(&origEnqueueTaskWithParam));
+				MH_CreateHook(reinterpret_cast<void*>(EnqueueTaskWithoutParamHook), EnqueueTaskWithoutParam, reinterpret_cast<void**>(&origEnqueueTaskWithoutParam));
 
-			status = MH_EnableHook(reinterpret_cast<void*>(charDispCheckHook));
-			printf("charDispCheckHook returned %d\n", status);
+				MH_STATUS status = MH_EnableHook(reinterpret_cast<void*>(mainLoopHook));
+				printf("mainLoopHook returned %d\n", status);
 
-			status = MH_EnableHook(reinterpret_cast<void*>(EnqueueTaskWithParamHook));
-			printf("EnqueueTaskWithParamHook returned %d\n", status);
+				status = MH_EnableHook(reinterpret_cast<void*>(dbgPrintfHook));
+				printf("dbgPrintfHook returned %d\n", status);
 
-			status = MH_EnableHook(reinterpret_cast<void*>(EnqueueTaskWithoutParamHook));
-			printf("EnqueueTaskWithoutParamHook returned %d\n", status);
+				status = MH_EnableHook(reinterpret_cast<void*>(charDispCheckHook));
+				printf("charDispCheckHook returned %d\n", status);
 
-			// Register key presses once
-			f9.VirtualKey = VK_F9;
-			f10.VirtualKey = VK_F10;
-			f11.VirtualKey = VK_F11;
-			keyPresses.push_back(f9); keyPresses.push_back(f10); keyPresses.push_back(f11);
+				status = MH_EnableHook(reinterpret_cast<void*>(EnqueueTaskWithParamHook));
+				printf("EnqueueTaskWithParamHook returned %d\n", status);
 
+				status = MH_EnableHook(reinterpret_cast<void*>(EnqueueTaskWithoutParamHook));
+				printf("EnqueueTaskWithoutParamHook returned %d\n", status);
+				
+				origLoggerAddr = baseAddr + SHENMUE2_V107_LOGGER_FUNC;
+				*(DWORD_PTR*)origLoggerAddr = (DWORD_PTR)HookedLoggerFunc;
+				
+				// Register key presses once
+				f9.VirtualKey = VK_F9;
+				f10.VirtualKey = VK_F10;
+				f11.VirtualKey = VK_F11;
+				keyPresses.push_back(f9); keyPresses.push_back(f10); keyPresses.push_back(f11);
+
+				has_initialized = true;
+#			endif
 			has_initialized = true;
 		}
 
-		fFrameTime = *(float*)(baseAddr + SHENMUE2_V107_FRAMETIME)*1000.0f;
-		playerpos.x = *(float*)(baseAddr + SHENMUE2_V107_PLAYERPOSX);
-		playerpos.y = *(float*)(baseAddr + SHENMUE2_V107_PLAYERPOSY);
-		playerpos.z = *(float*)(baseAddr + SHENMUE2_V107_PLAYERPOSZ);
-		playerpos2.x = *(float*)(baseAddr + SHENMUE2_V107_PLAYERPOSX2);
-		playerpos2.y = *(float*)(baseAddr + SHENMUE2_V107_PLAYERPOSY2);
-		playerpos2.z = *(float*)(baseAddr + SHENMUE2_V107_PLAYERPOSZ2);
-		campos.x = *(float*)(baseAddr + SHENMUE2_V107_CAMPOSX);
-		campos.y = *(float*)(baseAddr + SHENMUE2_V107_CAMPOSY);
-		campos.z = *(float*)(baseAddr + SHENMUE2_V107_CAMPOSZ);
-		temp_player_money = *(int*)(baseAddr + SHENMUE2_V107_MONEY);
-		temp_sega_coins = *(int*)(baseAddr + SHENMUE2_V107_SEGACOINS);
+		fFrameTime			= *(float*)(baseAddr + SHENMUE2_V107_FRAMETIME)*1000.0f;
+		playerpos.x			= *(float*)(baseAddr + SHENMUE2_V107_PLAYERPOSX);
+		playerpos.y			= *(float*)(baseAddr + SHENMUE2_V107_PLAYERPOSY);
+		playerpos.z			= *(float*)(baseAddr + SHENMUE2_V107_PLAYERPOSZ);
+		playerpos2.x		= *(float*)(baseAddr + SHENMUE2_V107_PLAYERPOSX2);
+		playerpos2.y		= *(float*)(baseAddr + SHENMUE2_V107_PLAYERPOSY2);
+		playerpos2.z		= *(float*)(baseAddr + SHENMUE2_V107_PLAYERPOSZ2);
+		campos.x			= *(float*)(baseAddr + SHENMUE2_V107_CAMPOSX);
+		campos.y			= *(float*)(baseAddr + SHENMUE2_V107_CAMPOSY);
+		campos.z			= *(float*)(baseAddr + SHENMUE2_V107_CAMPOSZ);
+		temp_player_money	= *(int*)(baseAddr + SHENMUE2_V107_MONEY);
+		temp_sega_coins		= *(int*)(baseAddr + SHENMUE2_V107_SEGACOINS);
 		temp_cameradistance = *(float*)(baseAddr + SHENMUE2_V107_CAMDISTANCE);
 		temp_cameradistance2 = *(float*)(baseAddr + SHENMUE2_V107_CAMDISTANCE2);
-		temp_camerastate = *(int*)(baseAddr + SHENMUE2_V107_CAMSTATE);
-		temp_freezetime = *(int*)(baseAddr + SHENMUE2_V107_FREEZETIME);
-		fFPS = (1000.0f / fFrameTime);
+		temp_camerastate	= *(int*)(baseAddr + SHENMUE2_V107_CAMSTATE);
+		temp_freezetime		= *(int*)(baseAddr + SHENMUE2_V107_FREEZETIME);
+		fFPS				= (1000.0f / fFrameTime);
+
+		day = *(BYTE*)(baseAddr + SHENMUE2_V107_TIME_OF_DAY_DAY);
+		month = *(BYTE*)(baseAddr + SHENMUE2_V107_TIME_OF_DAY_MONTH);
+		year = *(BYTE*)(baseAddr + SHENMUE2_V107_TIME_OF_DAY_YEAR);
+		
+		hour = *(BYTE*)(baseAddr + SHENMUE2_V107_TIME_OF_DAY_HOURS);
+		minute = *(BYTE*)(baseAddr + SHENMUE2_V107_TIME_OF_DAY_MINUTES);
+		seconds = *(BYTE*)(baseAddr + SHENMUE2_V107_TIME_OF_DAY_SECONDS);
 
 		if (baseAddr != NULL && force_timemultiplier) {
 			unsigned char const * p = reinterpret_cast<unsigned char const *>(&timeMultiplier);
