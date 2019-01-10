@@ -745,8 +745,10 @@ signed __int64 charDispCheck(){
 	return origCharDispCheck();
 }
 
+static bool bWaiting = false;
+
 __int64 MainLoop() {
-	return origMainLoop();
+	return (bWaiting?0:origMainLoop());
 }
 static bool bDrawConsole = true;
 
@@ -1054,6 +1056,33 @@ __int64 __fastcall HookedLoggerFunc(char* msg, DWORD* a2, char* a3)
 	return 0i64;
 }
 
+struct Task {
+	uint64_t* callbackFuncPtr;
+	char taskName[4];
+	uint8_t unk1;
+	uint8_t unk2;
+	uint16_t pad0;
+	uint64_t* unk3;
+	uint64_t* unk4;
+	uint64_t* unk5;
+	uint64_t* unk6;
+	uint64_t* unk7;
+	uint64_t* unk8;
+	uint64_t* unk9;
+	uint64_t* unk10;
+	uint64_t* unk11;
+	uint64_t* unk12;
+	uint64_t* unk13;
+	uint64_t* unk14;
+};
+struct TaskQueue {
+	Task Tasks[300];
+};
+
+TaskQueue g_TaskQueue;
+
+char buffer[256] = "";
+
 void RenderScene()
 {
 	static std::once_flag flag;
@@ -1069,6 +1098,29 @@ void RenderScene()
 			console.Draw("Tasks", &bDrawConsole);
 #		endif
 		
+		ImGui::Begin("Task View");
+		for (int i = 0; i < 300; ++i)		{
+			if (!strstr(g_TaskQueue.Tasks[i].taskName, "NONE") && ImGui::TreeNode(g_TaskQueue.Tasks[i].taskName))			{
+				ImGui::Text("Callback Address: 0x%I64x\n", g_TaskQueue.Tasks[i].callbackFuncPtr);
+				ImGui::SameLine();
+				
+				ImGui::InputText("Callback Adddress: ", buffer, 256, ImGuiInputTextFlags_CharsHexadecimal);
+				if (ImGui::Button("Confirm"))					{
+					
+					printf("%I64x\n", g_TaskQueue.Tasks[i].callbackFuncPtr);
+				}
+				
+				ImGui::Text("0x0C: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk1);
+				ImGui::Text("0x0D: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk2);
+				ImGui::Text("0x10: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk3);
+				ImGui::Text("0x18: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk4);
+				ImGui::Text("0x20: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk5);
+				ImGui::Text("0x68: 0x%I64x\n", g_TaskQueue.Tasks[i].unk14);
+				ImGui::TreePop();
+			}
+		}
+		ImGui::End();
+
 		ImGui::Begin("Shenmue 2 v1.07 Misc Tools - LemonHaze", nullptr);
 		{
 			/*if(ImGui::Button("Clear NPCs!"))
@@ -1087,16 +1139,14 @@ void RenderScene()
 				rax3->f0 = (baseAddr + 0x42050);
 				rax3->f20 = 0x40400000;
 			}*/
-
-			if (ImGui::Button("Switch Camera Mode"))
+			/*if (ImGui::Button("Switch Camera Mode"))
 			{
 				cameraSwitch cs;
 				cs.f0 = 8;
 
 				SwitchCameraMode(&cs);
 			}
-
-			ImGui::Separator();
+			ImGui::Separator();*/
 
 			ImGui::Text("F9  : Toggle Tasks Window");
 			ImGui::Text("F10 : Toggle Main Window");
@@ -1340,6 +1390,8 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 		temp_camerastate	= *(int*)(baseAddr + SHENMUE2_V107_CAMSTATE);
 		temp_freezetime		= *(int*)(baseAddr + SHENMUE2_V107_FREEZETIME);
 		fFPS				= (1000.0f / fFrameTime);
+
+		g_TaskQueue			= *(TaskQueue*)(baseAddr + 0x2A80260);
 
 		day = *(BYTE*)(baseAddr + SHENMUE2_V107_TIME_OF_DAY_DAY);
 		month = *(BYTE*)(baseAddr + SHENMUE2_V107_TIME_OF_DAY_MONTH);
