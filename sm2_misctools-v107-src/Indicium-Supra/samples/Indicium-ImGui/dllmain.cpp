@@ -1106,16 +1106,15 @@ void RenderScene()
 				
 				ImGui::InputText("Callback Adddress: ", buffer, 256, ImGuiInputTextFlags_CharsHexadecimal);
 				if (ImGui::Button("Confirm"))					{
-					
 					printf("%I64x\n", g_TaskQueue.Tasks[i].callbackFuncPtr);
 				}
-				
 				ImGui::Text("0x0C: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk1);
 				ImGui::Text("0x0D: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk2);
 				ImGui::Text("0x10: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk3);
 				ImGui::Text("0x18: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk4);
 				ImGui::Text("0x20: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk5);
 				ImGui::Text("0x68: 0x%I64x\n", g_TaskQueue.Tasks[i].unk14);
+
 				ImGui::TreePop();
 			}
 		}
