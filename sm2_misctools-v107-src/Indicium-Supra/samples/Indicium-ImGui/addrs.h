@@ -34,16 +34,33 @@
 //-------------------------------------------------------
 // Shenmue 2 v1.07 - Offsets
 
-// Function offsets
-#define SHENMUE2_V107_ENQUEUETASKWITHOUTPARAM 0x49D890
-#define SHENMUE2_V107_ENQUEUETASKWITHPARAM 0x49DA10
-#define SHENMUE2_V107_NPC_CALLBACK_ENQUEUE 0x5003E0
-#define SHENMUE2_V107_GETTASKPARAMPTR 0x49D120
-#define SHENMUE2_V107_SWITCHCAMERAMODE 0x431660
+// Task system globals
+#define SHENMUE2_V107_CURRENT_TASK					0x81FFA50 // Current task position
+#define SHENMUE2_V107_NEXT_FREE_TASK				0x2A801C0 // Where the task will be written to when enqueued
+#define SHENMUE2_V107_PAUSE_TASK_ENQUEUE			0x2A801C8 // 0 = Unpause, >=1 = Pause
+#define SHENMUE2_V107_ROOT_TASK						0x2A801F0 // Root task position
+#define SHENMUE2_V107_FIRST_TASK					0x2A80260 // First task after the root task (start of the 300 task list)
+#define SHENMUE2_V107_TASK_QUEUE_MAYBE				0x2A88530 // Still don't know what this task pointer collection does.
 
-#define SHENMUE2_V107_DBGPRINTF 0x3575F0
-#define SHENMUE2_V107_MAINLOOP 0x49CF90
-#define SHENMUE2_V107_CHARDISPCHECK 0x443C70
+// Task system functions
+#define SHENMUE2_V107_MAINLOOP_FUNC					0x49CF90 // Main loop which iterates through the task nodes and runs the callbacks.
+#define SHENMUE2_V107_ENQUEUE_TASK_FUNC				0x49D890 // Enqueues a new task
+#define SHENMUE2_V107_ENQUEUE_TASK_WITH_PARAM_FUNC	0x49DA10 // Enqueues a new task with allocated parameter memory.
+#define SHENMUE2_V107_TASK_CLEANUP_FLAGS_FUNC		0x479780 // Called before task cleanup function
+#define SHENMUE2_V107_TASK_CLEANUP_FUNC				0x49D460 // Destructs a task
+
+// Function offsets
+#define SHENMUE2_V107_NPC_CALLBACK_ENQUEUE			0x5003E0
+#define SHENMUE2_V107_GETTASKPARAMPTR				0x49D120
+#define SHENMUE2_V107_SWITCHCAMERAMODE				0x431660
+#define SHENMUE2_V107_CHARDISPCHECK					0x443C70
+
+// Debug stuff (d3t)
+#define SHENMUE2_V107_ENABLE_NPC_LOGGER				0xD24D30
+#define SHENMUE2_V107_ENABLE_NPC_LOGGER_FIX			0x442D2A
+#define SHENMUE2_V107_ENABLE_NPC_LOGGER_FIX_INS		0x01B9
+
+#define SHENMUE2_V107_DBGPRINTF						0x3575F0
 
 // Data offsets
 #define SHENMUE2_V107_60FPS_LOCK		0x33ED13

@@ -74,9 +74,15 @@
     <ClInclude Include="addrs.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="func_defs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="structs.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="packages.config" />
     <None Include="Indicium-ImGui.ini" />
+    <None Include="packages.config" />
   </ItemGroup>
 </Project>

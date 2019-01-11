@@ -26,6 +26,8 @@ SOFTWARE.
 
 #include "dllmain.h"
 #include "addrs.h"
+#include "structs.h"
+#include "func_defs.h"
 
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 #define GLOBAL_HOTKEYS f9,f10,f11
@@ -582,7 +584,6 @@ DWORD_PTR baseAddr = NULL;
 bool bDrawDebugBuffers = false;
 void* debugBufferPatch = nullptr;
 
-typedef void(__stdcall *Hooked_DbgPrint_t) (char*, ...);
 Hooked_DbgPrint_t iHooked_DbgPrint;
 
 DWORD_PTR loggerAddr	 = 0x0;
@@ -646,17 +647,18 @@ DWORD_PTR GetProcessBaseAddress(DWORD processID)
 	return baseAddress;
 }
 
-struct vector3d
+bool WriteProcessMemoryWrapper(DWORD address, void* buffer, int length)
 {
-	float x, y, z;
-} campos;
-struct vector4d
-{
-	float x, y, z, a;
-};
+	DWORD_PTR	baseAddress = GetProcessBaseAddress(GetCurrentProcessId());
+	HANDLE      processHandle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, GetCurrentProcessId());
+	SIZE_T		bytesWritten;
+	return WriteProcessMemory(processHandle, (LPVOID)(baseAddress + address), buffer, length, &bytesWritten);
+}
 
-vector3d playerpos;
-vector3d playerpos2;
+
+vec3 campos;
+vec3 playerpos;
+vec3 playerpos2;
 
 static float temp_campos[]{ 0,0,0 };
 static float temp_playerpos[]{ 0,0,0 };
@@ -696,28 +698,13 @@ bool first_coords = true;
 bool show_tasks_in_console = false;
 bool show_logger_in_console = false;
 
+bool enable_npc_logger = false;
+bool npc_logger_initialized = false;
+uint16_t npc_logger_fix = SHENMUE2_V107_ENABLE_NPC_LOGGER_FIX_INS;
+
 std::vector<KeyPress> keyPresses;
 
 #ifndef RELEASE
-struct taskToken {
-	char one;
-	char two;
-	char three;
-	char four;
-};
-
-// Function Definitions
-typedef __int64(__fastcall *EnqueueTaskWithoutParam_t)(__int64 callbackFunction, uint8_t nextFunctionIndex, uint8_t r8b, unsigned int taskToken);
-typedef __int64(__fastcall *EnqueueTaskWithParam_t)(__int64 callbackFunction, uint8_t nextFunctionIndex, __int64 a3, __int64 param, unsigned int taskToken, char* taskName);
-typedef __int64(__fastcall* npc_Callback_Enqueue_t)(uint8_t a1, int a2, int a3);
-typedef signed __int64(__fastcall* NPC_Cleanup_Func_1_t)(__int64 a1);
-typedef signed __int64(__fastcall* GetTaskParameterPointer_t)(__int64 a1);
-
-struct cameraSwitch {
-	uint32_t f0;
-	int32_t f4;
-};
-typedef void(__fastcall* SwitchCameraMode_t)(struct cameraSwitch* cs);
 
 SwitchCameraMode_t			SwitchCameraMode;
 
@@ -734,9 +721,6 @@ EnqueueTaskWithParam_t		origEnqueueTaskWithParam;
 
 __int64 EnqueueTaskWithoutParam(__int64 callbackFunction, uint8_t nextFunctionIndex, uint8_t r8b, unsigned int taskToken);
 __int64 EnqueueTaskWithParam(__int64 callbackFunction, uint8_t nextFunctionIndex, __int64 a3, __int64 param, unsigned int taskToken, char* taskName);
-
-typedef signed __int64(__stdcall *charDispCheck_t)();
-typedef __int64(__stdcall *MainLoop_t) ();
 
 charDispCheck_t origCharDispCheck;
 MainLoop_t origMainLoop;
@@ -1056,28 +1040,7 @@ __int64 __fastcall HookedLoggerFunc(char* msg, DWORD* a2, char* a3)
 	return 0i64;
 }
 
-struct Task {
-	uint64_t* callbackFuncPtr;
-	char taskName[4];
-	uint8_t unk1;
-	uint8_t unk2;
-	uint16_t pad0;
-	uint64_t* unk3;
-	uint64_t* unk4;
-	uint64_t* unk5;
-	uint64_t* unk6;
-	uint64_t* unk7;
-	uint64_t* unk8;
-	uint64_t* unk9;
-	uint64_t* unk10;
-	uint64_t* unk11;
-	uint64_t* unk12;
-	uint64_t* unk13;
-	uint64_t* unk14;
-};
-struct TaskQueue {
-	Task Tasks[300];
-};
+
 
 TaskQueue g_TaskQueue;
 
@@ -1111,9 +1074,9 @@ void RenderScene()
 				ImGui::Text("0x0C: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk1);
 				ImGui::Text("0x0D: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk2);
 				ImGui::Text("0x10: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk3);
-				ImGui::Text("0x18: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk4);
+				ImGui::Text("0x18: 0x%Ix\n\t", g_TaskQueue.Tasks[i].nextTask);
 				ImGui::Text("0x20: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk5);
-				ImGui::Text("0x68: 0x%I64x\n", g_TaskQueue.Tasks[i].unk14);
+				ImGui::Text("0x68: 0x%I64x\n", g_TaskQueue.Tasks[i].callbackParamPtr);
 
 				ImGui::TreePop();
 			}
@@ -1157,7 +1120,8 @@ void RenderScene()
 			ImGui::Text("Frame: %0.2fms\nFPS: %0.2f\n", fFrameTime, fFPS);
 			
 			ImGui::Checkbox("Enable Tasks in Console", &show_tasks_in_console);	ImGui::SameLine();
-			ImGui::Checkbox("Enable Logger in Console", &show_logger_in_console);	ImGui::SameLine();
+			ImGui::Checkbox("Enable Logger in Console", &show_logger_in_console);
+			ImGui::Checkbox("Enable NPC Logger", &enable_npc_logger);
 
 			ImGui::Separator();
 
@@ -1318,10 +1282,10 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 #			ifndef RELEASE
 				AllocConsole();
 				freopen("CON", "w", stdout);
-				
+
 				// Main loop hook: (SM2)	
-				EnqueueTaskWithoutParamCall = (EnqueueTaskWithoutParam_t)(baseAddr + SHENMUE2_V107_ENQUEUETASKWITHOUTPARAM);
-				EnqueueTaskWithParamCall = (EnqueueTaskWithParam_t)(baseAddr + SHENMUE2_V107_ENQUEUETASKWITHPARAM);
+				EnqueueTaskWithoutParamCall = (EnqueueTaskWithoutParam_t)(baseAddr + SHENMUE2_V107_ENQUEUE_TASK_FUNC);
+				EnqueueTaskWithParamCall = (EnqueueTaskWithParam_t)(baseAddr + SHENMUE2_V107_ENQUEUE_TASK_WITH_PARAM_FUNC);
 				npc_Callback_Enqueue = (npc_Callback_Enqueue_t)(baseAddr + SHENMUE2_V107_NPC_CALLBACK_ENQUEUE);
 
 				sub_1404796D0 = (NPC_Cleanup_Func_1_t)(baseAddr + 0x4796D0);
@@ -1330,10 +1294,10 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 				SwitchCameraMode = (SwitchCameraMode_t)(baseAddr + SHENMUE2_V107_SWITCHCAMERAMODE);
 
 				DWORD_PTR dbgPrintfHook = baseAddr + SHENMUE2_V107_DBGPRINTF;
-				DWORD_PTR mainLoopHook = baseAddr + SHENMUE2_V107_MAINLOOP;
+				DWORD_PTR mainLoopHook = baseAddr + SHENMUE2_V107_MAINLOOP_FUNC;
 				DWORD_PTR charDispCheckHook = baseAddr + SHENMUE2_V107_CHARDISPCHECK;
-				DWORD_PTR EnqueueTaskWithoutParamHook = baseAddr + SHENMUE2_V107_ENQUEUETASKWITHOUTPARAM;
-				DWORD_PTR EnqueueTaskWithParamHook = baseAddr + SHENMUE2_V107_ENQUEUETASKWITHPARAM;
+				DWORD_PTR EnqueueTaskWithoutParamHook = baseAddr + SHENMUE2_V107_ENQUEUE_TASK_FUNC;
+				DWORD_PTR EnqueueTaskWithParamHook = baseAddr + SHENMUE2_V107_ENQUEUE_TASK_WITH_PARAM_FUNC;
 
 				MH_CreateHook(reinterpret_cast<void*>(dbgPrintfHook), Hooked_DbgPrint, reinterpret_cast<void**>(&iHooked_DbgPrint));
 
@@ -1390,7 +1354,7 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 		temp_freezetime		= *(int*)(baseAddr + SHENMUE2_V107_FREEZETIME);
 		fFPS				= (1000.0f / fFrameTime);
 
-		g_TaskQueue			= *(TaskQueue*)(baseAddr + 0x2A80260);
+		g_TaskQueue			= *(TaskQueue*)(baseAddr + SHENMUE2_V107_FIRST_TASK);
 
 		day = *(BYTE*)(baseAddr + SHENMUE2_V107_TIME_OF_DAY_DAY);
 		month = *(BYTE*)(baseAddr + SHENMUE2_V107_TIME_OF_DAY_MONTH);
@@ -1399,6 +1363,13 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 		hour = *(BYTE*)(baseAddr + SHENMUE2_V107_TIME_OF_DAY_HOURS);
 		minute = *(BYTE*)(baseAddr + SHENMUE2_V107_TIME_OF_DAY_MINUTES);
 		seconds = *(BYTE*)(baseAddr + SHENMUE2_V107_TIME_OF_DAY_SECONDS);
+
+		if (enable_npc_logger && !npc_logger_initialized)
+		{
+			WriteProcessMemoryWrapper(SHENMUE2_V107_ENABLE_NPC_LOGGER_FIX, &npc_logger_fix, sizeof(npc_logger_fix));
+			npc_logger_initialized = true;
+		}
+		memcpy((void*)(baseAddr + SHENMUE2_V107_ENABLE_NPC_LOGGER), &enable_npc_logger, sizeof(enable_npc_logger));
 
 		if (baseAddr != NULL && force_timemultiplier) {
 			unsigned char const * p = reinterpret_cast<unsigned char const *>(&timeMultiplier);
