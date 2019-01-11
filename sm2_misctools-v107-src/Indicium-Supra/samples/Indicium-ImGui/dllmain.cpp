@@ -94,6 +94,62 @@ char* moneyBuf = { '\0' };
 
 DWORD_PTR gPtr = NULL;
 
+DWORD_PTR GetProcessBaseAddress(DWORD processID)
+{
+	DWORD_PTR   baseAddress = 0;
+	HANDLE      processHandle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, processID);
+	HMODULE     *moduleArray;
+	LPBYTE      moduleArrayBytes;
+	DWORD       bytesRequired;
+
+	if (processHandle)
+	{
+		if (EnumProcessModules(processHandle, NULL, 0, &bytesRequired))
+		{
+			if (bytesRequired)
+			{
+				moduleArrayBytes = (LPBYTE)LocalAlloc(LPTR, bytesRequired);
+
+				if (moduleArrayBytes)
+				{
+					unsigned int moduleCount;
+
+					moduleCount = bytesRequired / sizeof(HMODULE);
+					moduleArray = (HMODULE *)moduleArrayBytes;
+
+					if (EnumProcessModules(processHandle, moduleArray, bytesRequired, &bytesRequired))
+					{
+						baseAddress = (DWORD_PTR)moduleArray[0];
+					}
+					LocalFree(moduleArrayBytes);
+				}
+			}
+		}
+
+		CloseHandle(processHandle);
+	}
+	return baseAddress;
+}
+
+bool WriteProcessMemoryWrapper(DWORD address, void* buffer, int length)
+{
+	DWORD_PTR	baseAddress = GetProcessBaseAddress(GetCurrentProcessId());
+	HANDLE      processHandle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, GetCurrentProcessId());
+	SIZE_T		bytesWritten;
+	return WriteProcessMemory(processHandle, (LPVOID)(baseAddress + address), buffer, length, &bytesWritten);
+}
+
+void EnableD3TDebug()
+{
+	DWORD_PTR base = GetProcessBaseAddress(GetCurrentProcessId());
+	DWORD d3t_1 = 1;
+	memcpy((void*)(base + SHENMUE2_V107_ENABLE_D3T_DEBUG_1), &d3t_1, sizeof(d3t_1));
+	memcpy((void*)(base + SHENMUE2_V107_ENABLE_D3T_DEBUG_2), &d3t_1, sizeof(d3t_1));
+	memcpy((void*)(base + SHENMUE2_V107_ENABLE_D3T_DEBUG_3), &d3t_1, sizeof(d3t_1));
+	memcpy((void*)(base + SHENMUE2_V107_ENABLE_D3T_DEBUG_4), &d3t_1, sizeof(d3t_1));
+	//memcpy((void*)(base + SHENMUE2_V107_ENABLE_D3T_DEBUG_5), &d3t_1, sizeof(d3t_1)); //spams alot
+}
+
 /**
  * \fn  BOOL WINAPI DllMain(HINSTANCE hInstance, DWORD dwReason, LPVOID)
  *
@@ -115,6 +171,8 @@ BOOL WINAPI DllMain(HINSTANCE hInstance, DWORD dwReason, LPVOID)
     // We don't need to get notified in thread attach- or detachments
     // 
     DisableThreadLibraryCalls(static_cast<HMODULE>(hInstance));
+
+	EnableD3TDebug();
 
     INDICIUM_D3D9_EVENT_CALLBACKS d3d9;
     INDICIUM_D3D9_EVENT_CALLBACKS_INIT(&d3d9);
@@ -610,50 +668,7 @@ void Hooked_DbgPrint(char * msg, ...)
 
 static bool has_initialized = false;
 
-DWORD_PTR GetProcessBaseAddress(DWORD processID)
-{
-	DWORD_PTR   baseAddress = 0;
-	HANDLE      processHandle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, processID);
-	HMODULE     *moduleArray;
-	LPBYTE      moduleArrayBytes;
-	DWORD       bytesRequired;
 
-	if (processHandle)
-	{
-		if (EnumProcessModules(processHandle, NULL, 0, &bytesRequired))
-		{
-			if (bytesRequired)
-			{
-				moduleArrayBytes = (LPBYTE)LocalAlloc(LPTR, bytesRequired);
-
-				if (moduleArrayBytes)
-				{
-					unsigned int moduleCount;
-
-					moduleCount = bytesRequired / sizeof(HMODULE);
-					moduleArray = (HMODULE *)moduleArrayBytes;
-
-					if (EnumProcessModules(processHandle, moduleArray, bytesRequired, &bytesRequired))
-					{
-						baseAddress = (DWORD_PTR)moduleArray[0];
-					}
-					LocalFree(moduleArrayBytes);
-				}
-			}
-		}
-
-		CloseHandle(processHandle);
-	}
-	return baseAddress;
-}
-
-bool WriteProcessMemoryWrapper(DWORD address, void* buffer, int length)
-{
-	DWORD_PTR	baseAddress = GetProcessBaseAddress(GetCurrentProcessId());
-	HANDLE      processHandle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, GetCurrentProcessId());
-	SIZE_T		bytesWritten;
-	return WriteProcessMemory(processHandle, (LPVOID)(baseAddress + address), buffer, length, &bytesWritten);
-}
 
 
 vec3 campos;
@@ -1121,7 +1136,7 @@ void RenderScene()
 			
 			ImGui::Checkbox("Enable Tasks in Console", &show_tasks_in_console);	ImGui::SameLine();
 			ImGui::Checkbox("Enable Logger in Console", &show_logger_in_console);
-			ImGui::Checkbox("Enable NPC Logger", &enable_npc_logger);
+			ImGui::Checkbox("Enable NPC Logger", &enable_npc_logger); //ImGui::SameLine();
 
 			ImGui::Separator();
 
@@ -1293,7 +1308,7 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 
 				SwitchCameraMode = (SwitchCameraMode_t)(baseAddr + SHENMUE2_V107_SWITCHCAMERAMODE);
 
-				DWORD_PTR dbgPrintfHook = baseAddr + SHENMUE2_V107_DBGPRINTF;
+				DWORD_PTR dbgPrintfHook = baseAddr + SHENMUE2_V107_VSPRINTF_FUNC_3;
 				DWORD_PTR mainLoopHook = baseAddr + SHENMUE2_V107_MAINLOOP_FUNC;
 				DWORD_PTR charDispCheckHook = baseAddr + SHENMUE2_V107_CHARDISPCHECK;
 				DWORD_PTR EnqueueTaskWithoutParamHook = baseAddr + SHENMUE2_V107_ENQUEUE_TASK_FUNC;
