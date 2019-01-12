@@ -1115,7 +1115,8 @@ void RenderScene()
 				if (!strstr(g_TaskQueue.Tasks[i].taskName, "NONE") && ImGui::TreeNode(taskName)) {
 					ImGui::InputText("Callback Adddress: ", buffer, 256, ImGuiInputTextFlags_CharsHexadecimal);		ImGui::SameLine();
 					if (ImGui::Button("Confirm")) {
-						printf("%I64x\n", g_TaskQueue.Tasks[i].callbackFuncPtr);
+						uint64_t userCallbackAddr = strtoull(buffer, NULL, 16);
+						printf("User: 0x%I64x\nActual: 0x%I64X\n", userCallbackAddr, g_TaskQueue.Tasks[i].callbackFuncPtr);
 					}
 
 					if (ImGui::Button("Dump Task In Console")) {
