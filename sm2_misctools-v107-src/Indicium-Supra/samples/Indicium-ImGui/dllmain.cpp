@@ -585,9 +585,13 @@ bool bDrawDebugBuffers = false;
 void* debugBufferPatch = nullptr;
 
 Hooked_DbgPrint_t iHooked_DbgPrint;
+hooked_sub_1404B62C0_t orig_sub_1404B62C0;
 
 DWORD_PTR loggerAddr	 = 0x0;
 DWORD_PTR origLoggerAddr = 0x0;
+
+DWORD_PTR otherloggerAddr = 0x0;
+DWORD_PTR otherorigLoggerAddr = 0x0;
 
 void Hooked_DbgPrint(char * msg, ...)
 {
@@ -701,6 +705,7 @@ bool show_logger_in_console = false;
 bool enable_npc_logger = false;
 bool npc_logger_initialized = false;
 uint16_t npc_logger_fix = SHENMUE2_V107_ENABLE_NPC_LOGGER_FIX_INS;
+char fps_fix[] = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
 
 std::vector<KeyPress> keyPresses;
 
@@ -719,8 +724,8 @@ EnqueueTaskWithParam_t		EnqueueTaskWithParamCall;
 EnqueueTaskWithoutParam_t	origEnqueueTaskWithoutParam;
 EnqueueTaskWithParam_t		origEnqueueTaskWithParam;
 
-__int64 EnqueueTaskWithoutParam(__int64 callbackFunction, uint8_t nextFunctionIndex, uint8_t r8b, unsigned int taskToken);
-__int64 EnqueueTaskWithParam(__int64 callbackFunction, uint8_t nextFunctionIndex, __int64 a3, __int64 param, unsigned int taskToken, char* taskName);
+__int64 EnqueueTaskWithoutParam(__int64 callbackFunction, uint8_t nextFunctionIndex, uint8_t r8b, int taskToken);
+__int64 EnqueueTaskWithParam(__int64 callbackFunction, uint8_t nextFunctionIndex, __int64 a3, __int64 param, int taskToken, char* taskName);
 
 charDispCheck_t origCharDispCheck;
 MainLoop_t origMainLoop;
@@ -1010,23 +1015,23 @@ struct appConsole
 
 static appConsole console;
 
-__int64 EnqueueTaskWithoutParam(__int64 callbackFunction, uint8_t nextFunctionIndex, uint8_t r8b, unsigned int taskToken) {
+__int64 EnqueueTaskWithoutParam(__int64 callbackFunction, uint8_t nextFunctionIndex, uint8_t r8b, int taskToken) {
 	__int64 result = origEnqueueTaskWithoutParam(callbackFunction, nextFunctionIndex, r8b, taskToken);
 #	ifdef _DEBUG
 	if(show_tasks_in_console)
-		printf("EnqueueTaskWithoutParam(0x%Ix,0x%x,0x%x,0x%08x) returned 0x%Ix\n", callbackFunction, nextFunctionIndex, r8b, taskToken, result);
+		printf("EnqueueTaskWithoutParam(0x%Ix, 0x%x, 0x%x, \"%c%c%c%c\") returned 0x%Ix\n", callbackFunction, nextFunctionIndex, r8b, taskToken & 0xFF, (taskToken >> 8) & 0xFF, (taskToken >> 16) & 0xFF, (taskToken >> 24) & 0xFF, result);
 
-	console.AddLog("EnqueueTaskWithoutParam(0x%Ix,0x%x,0x%x,0x%08x) returned 0x%Ix\n", callbackFunction, nextFunctionIndex, r8b, taskToken, result);
+	console.AddLog("EnqueueTaskWithoutParam(0x%Ix, 0x%x, 0x%x, \"%c%c%c%c\") returned 0x%Ix\n", callbackFunction, nextFunctionIndex, r8b, taskToken & 0xFF, (taskToken >> 8) & 0xFF, (taskToken >> 16) & 0xFF, (taskToken >> 24) & 0xFF, result);
 #	endif
 	return result;
 }
-__int64 EnqueueTaskWithParam(__int64 callbackFunction, uint8_t nextFunctionIndex, __int64 a3, __int64 param, unsigned int taskToken, char* taskName) {
+__int64 EnqueueTaskWithParam(__int64 callbackFunction, uint8_t nextFunctionIndex, __int64 a3, __int64 param, int taskToken, char* taskName) {
 	__int64 result = origEnqueueTaskWithParam(callbackFunction, nextFunctionIndex, a3, param, taskToken, taskName);
 #	ifdef _DEBUG
 	if (show_tasks_in_console)
-		printf("EnqueueTaskWithParam(0x%Ix,0x%x,0x%Ix,0x%Ix,0x%x,\"%s\") returned 0x%Ix\n", callbackFunction, nextFunctionIndex, a3, param, taskToken, taskName, result);
+		printf("EnqueueTaskWithParam(0x%Ix, 0x%x, 0x%Ix, 0x%Ix, \"%c%c%c%c\",\"%s\") returned 0x%Ix\n", callbackFunction, nextFunctionIndex, a3, param, taskToken & 0xFF, (taskToken >> 8) & 0xFF, (taskToken >> 16) & 0xFF, (taskToken >> 24) & 0xFF, taskName, result);
 
-	console.AddLog("EnqueueTaskWithParam(0x%Ix,0x%x,0x%Ix,0x%Ix,0x%x,\"%s\") returned 0x%Ix\n", callbackFunction, nextFunctionIndex, a3, param, taskToken, taskName, result);
+	console.AddLog("EnqueueTaskWithParam(0x%Ix, 0x%x, 0x%Ix, 0x%Ix, \"%c%c%c%c\",\"%s\") returned 0x%Ix\n", callbackFunction, nextFunctionIndex, a3, param, taskToken & 0xFF, (taskToken >> 8) &0xFF, (taskToken>>16)&0xFF, (taskToken>>24)&0xFF, taskName, result);
 #	endif
 	return result;
 }
@@ -1035,12 +1040,24 @@ __int64 EnqueueTaskWithParam(__int64 callbackFunction, uint8_t nextFunctionIndex
 __int64 __fastcall HookedLoggerFunc(char* msg, DWORD* a2, char* a3)
 {
 	if(show_logger_in_console)
-		printf("%s: %x %s\n", msg, a2, a3);
+		printf("%s: %x %s%s", msg, a2, a3, (!strstr(msg, "\n") ? "\n" : ""));
 
 	return 0i64;
 }
+__int64 __fastcall OtherHookedLoggerFunc(char* msg)
+{
+	if (show_logger_in_console)
+		printf("%s%s", msg, (!strstr(msg, "\n")?"\n":""));
+	return 0i64;
+}
 
-
+void __fastcall hooked_sub_1404B62C0(__int64 a1, unsigned int a2, unsigned int a3, int a4)
+{
+	printf("sub_1404B62C0(0x%I64x, 0x%x, 0x%x, %c%c%c%c)\n", a1, a2, a3, a4 & 0xFF,
+																		(a4 >> 8) & 0xFF, (a4 >> 16) & 0xFF,
+																		(a4 >> 24) & 0xFF);
+	orig_sub_1404B62C0(a1, a2, a3, a4);
+}
 
 TaskQueue g_TaskQueue;
 
@@ -1071,6 +1088,7 @@ void RenderScene()
 				if (ImGui::Button("Confirm"))					{
 					printf("%I64x\n", g_TaskQueue.Tasks[i].callbackFuncPtr);
 				}
+
 				ImGui::Text("0x0C: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk1);
 				ImGui::Text("0x0D: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk2);
 				ImGui::Text("0x10: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk3);
@@ -1299,6 +1317,10 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 				DWORD_PTR EnqueueTaskWithoutParamHook = baseAddr + SHENMUE2_V107_ENQUEUE_TASK_FUNC;
 				DWORD_PTR EnqueueTaskWithParamHook = baseAddr + SHENMUE2_V107_ENQUEUE_TASK_WITH_PARAM_FUNC;
 
+				DWORD_PTR sub_1404B62C0Offset = baseAddr + 0x4B62C0;
+
+				MH_CreateHook(reinterpret_cast<void*>(sub_1404B62C0Offset), hooked_sub_1404B62C0, reinterpret_cast<void**>(&orig_sub_1404B62C0));
+
 				MH_CreateHook(reinterpret_cast<void*>(dbgPrintfHook), Hooked_DbgPrint, reinterpret_cast<void**>(&iHooked_DbgPrint));
 
 				MH_CreateHook(reinterpret_cast<void*>(mainLoopHook), MainLoop, reinterpret_cast<void**>(&origMainLoop));
@@ -1309,6 +1331,9 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 
 				MH_STATUS status = MH_EnableHook(reinterpret_cast<void*>(mainLoopHook));
 				printf("mainLoopHook returned %d\n", status);
+
+				status = MH_EnableHook(reinterpret_cast<void*>(sub_1404B62C0Offset));
+				printf("sub_1404B62C0 returned %d\n", status);
 
 				status = MH_EnableHook(reinterpret_cast<void*>(dbgPrintfHook));
 				printf("dbgPrintfHook returned %d\n", status);
@@ -1325,6 +1350,9 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 				origLoggerAddr = baseAddr + SHENMUE2_V107_LOGGER_FUNC;
 				*(DWORD_PTR*)origLoggerAddr = (DWORD_PTR)HookedLoggerFunc;
 				
+				otherorigLoggerAddr = baseAddr + 0x8281140;
+				*(DWORD_PTR*)otherorigLoggerAddr = (DWORD_PTR)OtherHookedLoggerFunc;
+
 				// Register key presses once
 				f9.VirtualKey = VK_F9;
 				f10.VirtualKey = VK_F10;
@@ -1369,6 +1397,9 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 			WriteProcessMemoryWrapper(SHENMUE2_V107_ENABLE_NPC_LOGGER_FIX, &npc_logger_fix, sizeof(npc_logger_fix));
 			npc_logger_initialized = true;
 		}
+
+		WriteProcessMemoryWrapper(SHENMUE2_V107_60FPS_LOCK, &fps_fix, sizeof(fps_fix));
+
 		memcpy((void*)(baseAddr + SHENMUE2_V107_ENABLE_NPC_LOGGER), &enable_npc_logger, sizeof(enable_npc_logger));
 
 		if (baseAddr != NULL && force_timemultiplier) {
