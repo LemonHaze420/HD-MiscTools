@@ -1103,37 +1103,40 @@ void RenderScene()
 	if (show_overlay)
 	{
 #		ifndef RELEASE
-			console.Draw("Tasks", &bDrawConsole);
+		console.Draw("Task Console", &bDrawConsole);
 #		endif
-		
+
 		ImGui::Begin("Task View");
-		for (int i = 0; i < 300; ++i)		{
-			if (!strstr(g_TaskQueue.Tasks[i].taskName, "NONE") && ImGui::TreeNode(g_TaskQueue.Tasks[i].taskName))			{
-				ImGui::Text("Callback Address: 0x%I64x\n", g_TaskQueue.Tasks[i].callbackFuncPtr);
-				ImGui::SameLine();
-				
-				ImGui::InputText("Callback Adddress: ", buffer, 256, ImGuiInputTextFlags_CharsHexadecimal);
-				if (ImGui::Button("Confirm"))					{
-					printf("%I64x\n", g_TaskQueue.Tasks[i].callbackFuncPtr);
+		{
+			char *taskName = new char[256];
+			for (int i = 0; i < 299; ++i) {
+				sprintf(taskName, "[ID%d] %c%c%c%c", i, g_TaskQueue.Tasks[i].taskName[0], g_TaskQueue.Tasks[i].taskName[1], g_TaskQueue.Tasks[i].taskName[2], g_TaskQueue.Tasks[i].taskName[3]);
+
+				if (!strstr(g_TaskQueue.Tasks[i].taskName, "NONE") && ImGui::TreeNode(taskName)) {
+					ImGui::InputText("Callback Adddress: ", buffer, 256, ImGuiInputTextFlags_CharsHexadecimal);		ImGui::SameLine();
+					if (ImGui::Button("Confirm")) {
+						printf("%I64x\n", g_TaskQueue.Tasks[i].callbackFuncPtr);
+					}
+
+					if (ImGui::Button("Dump Task In Console")) {
+						hex_dump(taskName, (unsigned char*)&g_TaskQueue.Tasks[i], 0x74);
+					}
+
+					ImGui::Separator();
+					ImGui::Text("Callback Address: 0x%I64x\n", g_TaskQueue.Tasks[i].callbackFuncPtr);
+					ImGui::Separator();
+					ImGui::Text("0x0C: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk1);
+					ImGui::Text("0x0D: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk2);
+					ImGui::Text("0x10: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk3);
+					ImGui::Text("0x18: 0x%Ix\n\t", g_TaskQueue.Tasks[i].nextTask);
+					ImGui::Text("0x20: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk5);
+					ImGui::Text("0x68: 0x%I64x\n", g_TaskQueue.Tasks[i].callbackParamPtr);
+					ImGui::Separator();
+
+					ImGui::TreePop();
 				}
-
-				if (ImGui::Button("Dump Task"))				{
-					char* buffer = '\0';
-					sprintf(buffer, "Task %s", g_TaskQueue.Tasks[i].taskName);
-
-					printf("Address: %I64x\n", &g_TaskQueue.Tasks[i]);
-					//hex_dump(buffer, )
-				}
-
-				ImGui::Text("0x0C: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk1);
-				ImGui::Text("0x0D: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk2);
-				ImGui::Text("0x10: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk3);
-				ImGui::Text("0x18: 0x%Ix\n\t", g_TaskQueue.Tasks[i].nextTask);
-				ImGui::Text("0x20: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk5);
-				ImGui::Text("0x68: 0x%I64x\n", g_TaskQueue.Tasks[i].callbackParamPtr);
-
-				ImGui::TreePop();
 			}
+			delete[] taskName;
 		}
 		ImGui::End();
 
