@@ -644,7 +644,7 @@ bool bDrawDebugBuffers = false;
 void* debugBufferPatch = nullptr;
 
 Hooked_DbgPrint_t iHooked_DbgPrint;
-hooked_sub_1404B62C0_t orig_sub_1404B62C0;
+hooked_sub_1404B5030_t orig_sub_1404B5030;
 
 DWORD_PTR loggerAddr	 = 0x0;
 DWORD_PTR origLoggerAddr = 0x0;
@@ -1072,12 +1072,10 @@ __int64 __fastcall OtherHookedLoggerFunc(char* msg)
 	return 0i64;
 }
 
-void __fastcall hooked_sub_1404B62C0(__int64 a1, unsigned int a2, unsigned int a3, int a4)
+void __fastcall hooked_sub_1404B5030(__int64 a1, unsigned int a2, int a3)
 {
-	printf("sub_1404B62C0(0x%I64x, 0x%x, 0x%x, %c%c%c%c)\n", a1, a2, a3, a4 & 0xFF,
-																		(a4 >> 8) & 0xFF, (a4 >> 16) & 0xFF,
-																		(a4 >> 24) & 0xFF);
-	orig_sub_1404B62C0(a1, a2, a3, a4);
+	printf("sub_1404B5030(0x%I64X, 0x%X, 0x%X)\n", a1, a2, a3);
+	orig_sub_1404B5030(a1, a2, a3);
 }
 
 void hex_dump(char *str, unsigned char *buf, int size)
@@ -1136,7 +1134,7 @@ void RenderScene()
 					}
 
 					ImGui::Separator();
-					ImGui::Text("Callback Address: 0x%I64x\n", g_TaskQueue.Tasks[i].callbackFuncPtr);
+					ImGui::Text("Callback Address: 0x%I64x\n", g_TaskQueue.Tasks[i].callbackFuncPtr); 
 					ImGui::Separator();
 					ImGui::Text("0x0C: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk1);
 					ImGui::Text("0x0D: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk2);
@@ -1369,9 +1367,9 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 				DWORD_PTR EnqueueTaskWithoutParamHook = baseAddr + SHENMUE2_V107_ENQUEUE_TASK_FUNC;
 				DWORD_PTR EnqueueTaskWithParamHook = baseAddr + SHENMUE2_V107_ENQUEUE_TASK_WITH_PARAM_FUNC;
 
-				DWORD_PTR sub_1404B62C0Offset = baseAddr + 0x4B62C0;
+				DWORD_PTR sub_1404B5030Offset = baseAddr + 0x4B62C0;
 
-				MH_CreateHook(reinterpret_cast<void*>(sub_1404B62C0Offset), hooked_sub_1404B62C0, reinterpret_cast<void**>(&orig_sub_1404B62C0));
+				MH_CreateHook(reinterpret_cast<void*>(sub_1404B5030Offset), hooked_sub_1404B5030, reinterpret_cast<void**>(&orig_sub_1404B5030));
 
 				MH_CreateHook(reinterpret_cast<void*>(dbgPrintfHook), Hooked_DbgPrint, reinterpret_cast<void**>(&iHooked_DbgPrint));
 
@@ -1384,8 +1382,8 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 				MH_STATUS status = MH_EnableHook(reinterpret_cast<void*>(mainLoopHook));
 				printf("mainLoopHook returned %d\n", status);
 
-				status = MH_EnableHook(reinterpret_cast<void*>(sub_1404B62C0Offset));
-				printf("sub_1404B62C0 returned %d\n", status);
+				//status = MH_EnableHook(reinterpret_cast<void*>(sub_1404B5030Offset));
+				//printf("sub_1404B5030 returned %d\n", status);
 
 				status = MH_EnableHook(reinterpret_cast<void*>(dbgPrintfHook));
 				printf("dbgPrintfHook returned %d\n", status);
