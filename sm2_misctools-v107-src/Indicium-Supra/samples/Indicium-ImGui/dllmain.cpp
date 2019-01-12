@@ -1074,6 +1074,19 @@ void __fastcall hooked_sub_1404B62C0(__int64 a1, unsigned int a2, unsigned int a
 	orig_sub_1404B62C0(a1, a2, a3, a4);
 }
 
+void hex_dump(char *str, unsigned char *buf, int size)
+{
+	if (str)
+		printf("%s:", str);
+	for (int i = 0; i<size; ++i) {
+		if ((i % 16) == 0) {
+			printf("\n%4X:", i);
+		}
+		printf(" %02X", buf[i]);
+	}
+	printf("\n\n");
+}
+
 TaskQueue g_TaskQueue;
 
 char buffer[256] = "";
@@ -1102,6 +1115,14 @@ void RenderScene()
 				ImGui::InputText("Callback Adddress: ", buffer, 256, ImGuiInputTextFlags_CharsHexadecimal);
 				if (ImGui::Button("Confirm"))					{
 					printf("%I64x\n", g_TaskQueue.Tasks[i].callbackFuncPtr);
+				}
+
+				if (ImGui::Button("Dump Task"))				{
+					char* buffer = '\0';
+					sprintf(buffer, "Task %s", g_TaskQueue.Tasks[i].taskName);
+
+					printf("Address: %I64x\n", &g_TaskQueue.Tasks[i]);
+					//hex_dump(buffer, )
 				}
 
 				ImGui::Text("0x0C: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk1);
