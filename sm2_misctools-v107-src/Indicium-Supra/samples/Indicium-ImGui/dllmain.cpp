@@ -89,6 +89,7 @@ static bool force_60fps2			= false;
 static bool force_timemultiplier	= false;
 static bool force_camlock			= false;
 static bool enable_freecam			= false;
+static bool bShowNoneInTaskView		= false;
 
 char* moneyBuf = { '\0' };
 
@@ -773,6 +774,7 @@ struct appConsole
 		Commands.push_back("HISTORY");
 		Commands.push_back("CLEAR");
 		Commands.push_back("CLASSIFY");  // "classify" is only here to provide an example of "C"+[tab] completing to "CL" and displaying matches.
+		Commands.push_back("TOGGLESHOWNONE");
 	}
 	~appConsole()
 	{
@@ -914,6 +916,10 @@ struct appConsole
 			int first = History.Size - 10;
 			for (int i = first > 0 ? first : 0; i < History.Size; i++)
 				AddLog("%3d: %s\n", i, History[i]);
+		}
+		else if (Stricmp(command_line, "TOGGLESHOWNONE") == 0)
+		{
+			bShowNoneInTaskView = !bShowNoneInTaskView;
 		}
 		else
 		{
@@ -1108,16 +1114,22 @@ void RenderScene()
 
 		ImGui::Begin("Task View");
 		{
+			ImGui::Checkbox("Show Empty", &bShowNoneInTaskView); 
+
 			char *taskName = new char[256];
 			for (int i = 0; i < 299; ++i) {
 				sprintf(taskName, "[ID%d] %c%c%c%c", i, g_TaskQueue.Tasks[i].taskName[0], g_TaskQueue.Tasks[i].taskName[1], g_TaskQueue.Tasks[i].taskName[2], g_TaskQueue.Tasks[i].taskName[3]);
 
-				if (!strstr(g_TaskQueue.Tasks[i].taskName, "NONE") && ImGui::TreeNode(taskName)) {
+				if (!bShowNoneInTaskView && strstr(taskName, "NONE"))
+						break;
+
+				if (ImGui::TreeNode(taskName)) {
 					ImGui::InputText("Callback Adddress: ", buffer, 256, ImGuiInputTextFlags_CharsHexadecimal);		ImGui::SameLine();
 					if (ImGui::Button("Confirm")) {
 						uint64_t userCallbackAddr = strtoull(buffer, NULL, 16);
 						printf("User: 0x%I64x\nActual: 0x%I64X\n", userCallbackAddr, g_TaskQueue.Tasks[i].callbackFuncPtr);
 					}
+					ImGui::Separator();
 
 					if (ImGui::Button("Dump Task In Console")) {
 						hex_dump(taskName, (unsigned char*)&g_TaskQueue.Tasks[i], 0x74);
