@@ -41,6 +41,7 @@
 #define SHENMUE2_V107_ROOT_TASK						0x2A801F0 // Root task position
 #define SHENMUE2_V107_FIRST_TASK					0x2A80260 // First task after the root task (start of the 300 task list)
 #define SHENMUE2_V107_TASK_QUEUE_MAYBE				0x2A88530 // Still don't know what this task pointer collection does.
+#define SHENMUE2_V107_CTRL_TASK						0x81FBAD0 // Map control task
 
 // Task system functions
 #define SHENMUE2_V107_MAINLOOP_FUNC					0x49CF90 // Main loop which iterates through the task nodes and runs the callbacks.
@@ -85,6 +86,7 @@
 
 #define SHENMUE2_V107_FRAMETIME			0x3EE10BC
 
+#define SHENMUE2_V107_PLAYER_STRUCT     0x96D238
 #define SHENMUE2_V107_PLAYERPOSX		0x1D20654
 #define SHENMUE2_V107_PLAYERPOSY		0x1D2064C
 #define SHENMUE2_V107_PLAYERPOSZ		0x1D20650

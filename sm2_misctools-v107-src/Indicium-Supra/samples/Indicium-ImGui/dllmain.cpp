@@ -147,7 +147,7 @@ void EnableD3TDebug()
 	memcpy((void*)(base + SHENMUE2_V107_ENABLE_D3T_DEBUG_1), &d3t_1, sizeof(d3t_1));
 	memcpy((void*)(base + SHENMUE2_V107_ENABLE_D3T_DEBUG_2), &d3t_1, sizeof(d3t_1));
 	memcpy((void*)(base + SHENMUE2_V107_ENABLE_D3T_DEBUG_3), &d3t_1, sizeof(d3t_1));
-	memcpy((void*)(base + SHENMUE2_V107_ENABLE_D3T_DEBUG_4), &d3t_1, sizeof(d3t_1));
+	//memcpy((void*)(base + SHENMUE2_V107_ENABLE_D3T_DEBUG_4), &d3t_1, sizeof(d3t_1));
 	//memcpy((void*)(base + SHENMUE2_V107_ENABLE_D3T_DEBUG_5), &d3t_1, sizeof(d3t_1)); //spams alot
 }
 
@@ -735,13 +735,20 @@ GetTaskParameterPointer_t	GetTaskParameterPointer;
 npc_Callback_Enqueue_t		npc_Callback_Enqueue;
 EnqueueTaskWithoutParam_t	EnqueueTaskWithoutParamCall;
 EnqueueTaskWithParam_t		EnqueueTaskWithParamCall;
+CleanupTask_t				CleanupTaskCall;
+CleanupTaskFlags_t			CleanupTaskFlagsCall;
 
 // Function Hooks
 EnqueueTaskWithoutParam_t	origEnqueueTaskWithoutParam;
 EnqueueTaskWithParam_t		origEnqueueTaskWithParam;
+CleanupTask_t				origCleanupTask;
+CleanupTaskFlags_t			origCleanupTaskFlags;
 
 __int64 EnqueueTaskWithoutParam(__int64 callbackFunction, uint8_t nextFunctionIndex, uint8_t r8b, int taskToken);
 __int64 EnqueueTaskWithParam(__int64 callbackFunction, uint8_t nextFunctionIndex, __int64 a3, __int64 param, int taskToken, char* taskName);
+
+__int64 CleanupTask(__int64 taskPointer);
+__int64 CleanupTaskFlags(__int64 taskPointer);
 
 charDispCheck_t origCharDispCheck;
 MainLoop_t origMainLoop;
@@ -751,8 +758,14 @@ signed __int64 charDispCheck(){
 }
 
 static bool bWaiting = false;
+static __int64 toDeleteTask = 0;
 
 __int64 MainLoop() {
+	if (toDeleteTask)
+	{
+		origCleanupTask(toDeleteTask); 
+		toDeleteTask = 0;
+	}
 	return (bWaiting?0:origMainLoop());
 }
 static bool bDrawConsole = true;
@@ -1058,6 +1071,16 @@ __int64 EnqueueTaskWithParam(__int64 callbackFunction, uint8_t nextFunctionIndex
 }
 #endif
 
+__int64 CleanupTask(__int64 taskPointer) {
+	__int64 result = origCleanupTask(taskPointer);
+	return result;
+}
+
+__int64 CleanupTaskFlags(__int64 taskPointer) {
+	__int64 result = origCleanupTaskFlags(taskPointer);
+	return result;
+}
+
 __int64 __fastcall HookedLoggerFunc(char* msg, DWORD* a2, char* a3)
 {
 	if(show_logger_in_console)
@@ -1092,8 +1115,12 @@ void hex_dump(char *str, unsigned char *buf, int size)
 }
 
 TaskQueue g_TaskQueue;
+sm2_ctrl* g_MapControl;
+
 
 char buffer[256] = "";
+
+static float temp_charPos[]{ 0,0,0 };
 
 void RenderScene()
 {
@@ -1113,7 +1140,6 @@ void RenderScene()
 		ImGui::Begin("Task View");
 		{
 			ImGui::Checkbox("Show Empty", &bShowNoneInTaskView); 
-
 			char *taskName = new char[256];
 			for (int i = 0; i < 299; ++i) {
 				sprintf(taskName, "[ID%d] %c%c%c%c", i, g_TaskQueue.Tasks[i].taskName[0], g_TaskQueue.Tasks[i].taskName[1], g_TaskQueue.Tasks[i].taskName[2], g_TaskQueue.Tasks[i].taskName[3]);
@@ -1122,6 +1148,12 @@ void RenderScene()
 						break;
 
 				if (ImGui::TreeNode(taskName)) {
+
+					if (ImGui::Button("Delete")) {
+						toDeleteTask = (__int64)(&g_TaskQueue.Tasks[i]);
+						//origCleanupTask((__int64)&g_TaskQueue.Tasks[i]);
+					}
+
 					ImGui::InputText("Callback Adddress: ", buffer, 256, ImGuiInputTextFlags_CharsHexadecimal);		ImGui::SameLine();
 					if (ImGui::Button("Confirm")) {
 						uint64_t userCallbackAddr = strtoull(buffer, NULL, 16);
@@ -1143,6 +1175,56 @@ void RenderScene()
 					ImGui::Text("0x20: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk5);
 					ImGui::Text("0x68: 0x%I64x\n", g_TaskQueue.Tasks[i].callbackParamPtr); ImGui::SameLine(); if (ImGui::Button("Dump Param")) hex_dump(taskName, (unsigned char*)&g_TaskQueue.Tasks[i].callbackParamPtr, 0x200);
 					ImGui::Separator();
+
+					if (strstr(g_TaskQueue.Tasks[i].taskName, "CHAR")) {
+						if (g_TaskQueue.Tasks[i].callbackParamPtr) {
+							sm2_cwep* cwep = reinterpret_cast<sm2_cwep*>(g_TaskQueue.Tasks[i].callbackParamPtr);
+							ImGui::Text("X: %.04f\nY: %.04f\nZ: %.04f\n", cwep->posX, cwep->posY, cwep->posZ);
+							ImGui::InputFloat3("Warp Position", temp_charPos, 4);
+							if (ImGui::Button("Warp")) {
+								cwep->posX = temp_charPos[0];
+								cwep->posY = temp_charPos[1];
+								cwep->posZ = temp_charPos[2];
+							}
+							ImGui::Separator();
+						}
+					}
+
+					if (strstr(g_TaskQueue.Tasks[i].taskName, "CTRL")) {
+						if (g_TaskQueue.Tasks[i].callbackParamPtr) {
+							sm2_ctrl* ctrl = reinterpret_cast<sm2_ctrl*>(g_TaskQueue.Tasks[i].callbackParamPtr);
+							ImGui::Text("CWEP Address: 0x%I64x\n", ctrl->playerCwep);
+
+							ImGui::InputText("New CWEP Address: ", buffer, 256, ImGuiInputTextFlags_CharsHexadecimal);		ImGui::SameLine();
+							if (ImGui::Button("Confirm")) {
+								uint64_t userCallbackAddr = strtoull(buffer, NULL, 16);
+								printf("User: 0x%I64x\nActual: 0x%I64X\n", userCallbackAddr, ctrl->playerCwep);
+								ctrl->playerCwep = (uint64_t*)userCallbackAddr;
+							}
+							ImGui::Separator();
+						}
+					}
+
+					if (strstr(g_TaskQueue.Tasks[i].taskName, "SCEN")) {
+						if (g_TaskQueue.Tasks[i].callbackParamPtr) {
+							sm2_scen* scen = reinterpret_cast<sm2_scen*>(g_TaskQueue.Tasks[i].callbackParamPtr);
+							ImGui::Text("Char1: %s\n", reinterpret_cast<sm2_chid*>(scen->chidPtr1)->charID);
+							ImGui::Text("Char2: %s\n", reinterpret_cast<sm2_chid*>(scen->chidPtr2)->charID);
+							ImGui::Text("Char3: %s\n", reinterpret_cast<sm2_chid*>(scen->chidPtr3)->charID);
+							ImGui::Text("Char4: %s\n", reinterpret_cast<sm2_chid*>(scen->chidPtr4)->charID);
+							ImGui::Text("Char5: %s\n", reinterpret_cast<sm2_chid*>(scen->chidPtr5)->charID);
+							ImGui::Text("Char6: %s\n", reinterpret_cast<sm2_chid*>(scen->chidPtr6)->charID);
+							ImGui::Text("Char7: %s\n", reinterpret_cast<sm2_chid*>(scen->chidPtr7)->charID);
+							ImGui::Text("Char8: %s\n", reinterpret_cast<sm2_chid*>(scen->chidPtr8)->charID);
+							ImGui::Text("Char9: %s\n", reinterpret_cast<sm2_chid*>(scen->chidPtr9)->charID);
+							ImGui::Text("Char10: %s\n", reinterpret_cast<sm2_chid*>(scen->chidPtr10)->charID);
+							ImGui::Text("Char11: %s\n", reinterpret_cast<sm2_chid*>(scen->chidPtr11)->charID);
+							ImGui::Text("Char12: %s\n", reinterpret_cast<sm2_chid*>(scen->chidPtr12)->charID);
+							ImGui::Text("Char13: %s\n", reinterpret_cast<sm2_chid*>(scen->chidPtr13)->charID);
+							ImGui::Text("Char14: %s\n", reinterpret_cast<sm2_chid*>(scen->chidPtr14)->charID);
+							ImGui::Separator();
+						}
+					}
 
 					ImGui::TreePop();
 				}
@@ -1366,6 +1448,8 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 				DWORD_PTR charDispCheckHook = baseAddr + SHENMUE2_V107_CHARDISPCHECK;
 				DWORD_PTR EnqueueTaskWithoutParamHook = baseAddr + SHENMUE2_V107_ENQUEUE_TASK_FUNC;
 				DWORD_PTR EnqueueTaskWithParamHook = baseAddr + SHENMUE2_V107_ENQUEUE_TASK_WITH_PARAM_FUNC;
+				DWORD_PTR CleanupTaskHook = baseAddr + SHENMUE2_V107_TASK_CLEANUP_FUNC;
+				DWORD_PTR CleanupTaskFlagsHook = baseAddr + SHENMUE2_V107_TASK_CLEANUP_FLAGS_FUNC;
 
 				DWORD_PTR sub_1404B5030Offset = baseAddr + 0x4B62C0;
 
@@ -1378,6 +1462,9 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 
 				MH_CreateHook(reinterpret_cast<void*>(EnqueueTaskWithParamHook), EnqueueTaskWithParam, reinterpret_cast<void**>(&origEnqueueTaskWithParam));
 				MH_CreateHook(reinterpret_cast<void*>(EnqueueTaskWithoutParamHook), EnqueueTaskWithoutParam, reinterpret_cast<void**>(&origEnqueueTaskWithoutParam));
+
+				MH_CreateHook(reinterpret_cast<void*>(CleanupTaskHook), CleanupTask, reinterpret_cast<void**>(&origCleanupTask));
+				MH_CreateHook(reinterpret_cast<void*>(CleanupTaskFlagsHook), CleanupTaskFlags, reinterpret_cast<void**>(&origCleanupTaskFlags));
 
 				MH_STATUS status = MH_EnableHook(reinterpret_cast<void*>(mainLoopHook));
 				printf("mainLoopHook returned %d\n", status);
