@@ -1129,19 +1129,19 @@ void RenderScene()
 					}
 					ImGui::Separator();
 
-					if (ImGui::Button("Dump Task In Console")) {
+					if (ImGui::Button("Dump Task")) {
 						hex_dump(taskName, (unsigned char*)&g_TaskQueue.Tasks[i], 0x74);
 					}
 
 					ImGui::Separator();
-					ImGui::Text("Callback Address: 0x%I64x\n", g_TaskQueue.Tasks[i].callbackFuncPtr); 
+					ImGui::Text("Callback Address: 0x%I64x\n", g_TaskQueue.Tasks[i].callbackFuncPtr);  if (ImGui::Button("Dump Callback")) hex_dump(taskName, (unsigned char*)&g_TaskQueue.Tasks[i].callbackFuncPtr, 0x200);
 					ImGui::Separator();
-					ImGui::Text("0x0C: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk1);
+					ImGui::Text("0x0C: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk1); 
 					ImGui::Text("0x0D: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk2);
 					ImGui::Text("0x10: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk3);
-					ImGui::Text("0x18: 0x%Ix\n\t", g_TaskQueue.Tasks[i].nextTask);
+					ImGui::Text("0x18: 0x%Ix\n\t", g_TaskQueue.Tasks[i].nextTask); ImGui::SameLine(); if (ImGui::Button("Dump Next Task")) hex_dump(taskName, (unsigned char*)&g_TaskQueue.Tasks[i].nextTask, 0x200);
 					ImGui::Text("0x20: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk5);
-					ImGui::Text("0x68: 0x%I64x\n", g_TaskQueue.Tasks[i].callbackParamPtr);
+					ImGui::Text("0x68: 0x%I64x\n", g_TaskQueue.Tasks[i].callbackParamPtr); ImGui::SameLine(); if (ImGui::Button("Dump Param")) hex_dump(taskName, (unsigned char*)&g_TaskQueue.Tasks[i].callbackParamPtr, 0x200);
 					ImGui::Separator();
 
 					ImGui::TreePop();
