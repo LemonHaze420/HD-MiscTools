@@ -291,3 +291,8 @@ struct sm2_player {
 	char pad808[64];
 	int32_t f872;
 };
+
+struct charID {
+	signed char pad16[16];
+	char ID[4];
+};

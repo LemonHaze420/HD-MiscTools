@@ -91,6 +91,64 @@ static bool force_camlock			= false;
 static bool enable_freecam			= false;
 static bool bShowNoneInTaskView		= false;
 
+static bool has_initialized			= false;
+
+vec3 campos;
+vec3 playerpos;
+vec3 playerpos2;
+
+static float temp_campos[]{ 0,0,0 };
+static float temp_playerpos[]{ 0,0,0 };
+static float temp_user_cameradistance[]{ 0,0 };
+
+bool has_values_initialized = false;
+
+float timeMultiplier = 1.0f;
+float fFrameTime;
+float fFPS;
+
+float temp_cameradistance = 3.099999905f;
+float temp_cameradistance2 = 3.099999905f;
+
+float cameradistance = 0.0f;
+
+int player_money = 0;
+int sega_coins = 0;
+
+int temp_player_money = 0;
+int temp_sega_coins = 0;
+
+int temp_camlock = 0;
+
+int user_camerastate = 0;
+int temp_camerastate = 0;
+int user_freezetime = 0;
+int temp_freezetime = 0;
+
+BYTE day, month, year, hour, minute, seconds;
+
+bool force_freezetime = false;
+bool toggle_camerastate = false;
+
+bool first_coords = true;
+
+bool show_tasks_in_console = false;
+bool show_logger_in_console = false;
+
+bool enable_npc_logger = false;
+bool npc_logger_initialized = false;
+uint16_t npc_logger_fix = SHENMUE2_V107_ENABLE_NPC_LOGGER_FIX_INS;
+char fps_fix[] = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
+
+TaskQueue g_TaskQueue;
+sm2_ctrl* g_MapControl;
+
+char buffer[256] = "";
+
+static float temp_charPos[]{ 0,0,0 };
+
+std::vector<KeyPress> keyPresses;
+
 char* moneyBuf = { '\0' };
 
 DWORD_PTR gPtr = NULL;
@@ -645,12 +703,14 @@ void* debugBufferPatch = nullptr;
 
 Hooked_DbgPrint_t iHooked_DbgPrint;
 hooked_sub_1404B5030_t orig_sub_1404B5030;
+hooked_sub_1404B62C0_t orig_sub_1404B62C0;
 
 DWORD_PTR loggerAddr	 = 0x0;
 DWORD_PTR origLoggerAddr = 0x0;
 
 DWORD_PTR otherloggerAddr = 0x0;
 DWORD_PTR otherorigLoggerAddr = 0x0;
+
 
 void Hooked_DbgPrint(char * msg, ...)
 {
@@ -670,60 +730,6 @@ void Hooked_DbgPrint(char * msg, ...)
 
 	return;
 }
-
-static bool has_initialized = false;
-
-
-
-
-vec3 campos;
-vec3 playerpos;
-vec3 playerpos2;
-
-static float temp_campos[]{ 0,0,0 };
-static float temp_playerpos[]{ 0,0,0 };
-static float temp_user_cameradistance[]{ 0,0 };
-
-bool has_values_initialized = false;
-
-float timeMultiplier = 1.0f;
-float fFrameTime;
-float fFPS;
-
-float temp_cameradistance = 3.099999905f;
-float temp_cameradistance2 = 3.099999905f;
-
-float cameradistance = 0.0f;
-
-int player_money	= 0;
-int sega_coins		= 0;
-
-int temp_player_money = 0;
-int temp_sega_coins = 0;
-
-int temp_camlock = 0;
-
-int user_camerastate = 0;
-int temp_camerastate = 0;
-int user_freezetime = 0;
-int temp_freezetime = 0;
-
-BYTE day, month, year, hour, minute, seconds;
-
-bool force_freezetime = false;
-bool toggle_camerastate = false;
-
-bool first_coords = true;
-
-bool show_tasks_in_console = false;
-bool show_logger_in_console = false;
-
-bool enable_npc_logger = false;
-bool npc_logger_initialized = false;
-uint16_t npc_logger_fix = SHENMUE2_V107_ENABLE_NPC_LOGGER_FIX_INS;
-char fps_fix[] = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
-
-std::vector<KeyPress> keyPresses;
 
 #ifndef RELEASE
 
@@ -1094,13 +1100,11 @@ __int64 __fastcall OtherHookedLoggerFunc(char* msg)
 		printf("%s%s", msg, (!strstr(msg, "\n")?"\n":""));
 	return 0i64;
 }
-
-void __fastcall hooked_sub_1404B5030(__int64 a1, unsigned int a2, int a3)
+void __fastcall hooked_sub_1404B62C0(struct charID* a1, int32_t edx, int32_t r8d, int32_t r9d)
 {
-	printf("sub_1404B5030(0x%I64X, 0x%X, 0x%X)\n", a1, a2, a3);
-	orig_sub_1404B5030(a1, a2, a3);
+	printf("sub_1404B62C0(\"%c%c%c%c\", 0x%X, 0x%X, \"%c%c%c%c\")\n", a1->ID[0], a1->ID[1] , a1->ID[2], a1->ID[3], edx, r8d, r9d & 0xFF, (r9d >> 8) & 0xFF, (r9d >> 16) & 0xFF, (r9d >> 24) & 0xFF);
+	orig_sub_1404B62C0(a1, edx, r8d, r9d);
 }
-
 void hex_dump(char *str, unsigned char *buf, int size)
 {
 	if (str)
@@ -1113,14 +1117,6 @@ void hex_dump(char *str, unsigned char *buf, int size)
 	}
 	printf("\n\n");
 }
-
-TaskQueue g_TaskQueue;
-sm2_ctrl* g_MapControl;
-
-
-char buffer[256] = "";
-
-static float temp_charPos[]{ 0,0,0 };
 
 void RenderScene()
 {
@@ -1139,6 +1135,18 @@ void RenderScene()
 
 		ImGui::Begin("Task View");
 		{
+			if (ImGui::Button("Go!"))
+			{
+				charID cID;
+
+				cID.ID[0] = '_';
+				cID.ID[1] = 'B';
+				cID.ID[2] = 'Y';
+				cID.ID[3] = 'S';
+
+				orig_sub_1404B62C0(&cID, 0x2, 0x5, (int32_t)"pKAP");
+			}
+
 			ImGui::Checkbox("Show Empty", &bShowNoneInTaskView); 
 			char *taskName = new char[256];
 			for (int i = 0; i < 299; ++i) {
@@ -1451,9 +1459,9 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 				DWORD_PTR CleanupTaskHook = baseAddr + SHENMUE2_V107_TASK_CLEANUP_FUNC;
 				DWORD_PTR CleanupTaskFlagsHook = baseAddr + SHENMUE2_V107_TASK_CLEANUP_FLAGS_FUNC;
 
-				DWORD_PTR sub_1404B5030Offset = baseAddr + 0x4B62C0;
+				DWORD_PTR sub_1404B62C0Offset = baseAddr + 0x4B62C0;
 
-				MH_CreateHook(reinterpret_cast<void*>(sub_1404B5030Offset), hooked_sub_1404B5030, reinterpret_cast<void**>(&orig_sub_1404B5030));
+				MH_CreateHook(reinterpret_cast<void*>(sub_1404B62C0Offset), hooked_sub_1404B62C0, reinterpret_cast<void**>(&orig_sub_1404B62C0));
 
 				MH_CreateHook(reinterpret_cast<void*>(dbgPrintfHook), Hooked_DbgPrint, reinterpret_cast<void**>(&iHooked_DbgPrint));
 
@@ -1469,8 +1477,8 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 				MH_STATUS status = MH_EnableHook(reinterpret_cast<void*>(mainLoopHook));
 				printf("mainLoopHook returned %d\n", status);
 
-				//status = MH_EnableHook(reinterpret_cast<void*>(sub_1404B5030Offset));
-				//printf("sub_1404B5030 returned %d\n", status);
+				status = MH_EnableHook(reinterpret_cast<void*>(sub_1404B62C0Offset));
+				printf("sub_1404B62C0 returned %d\n", status);
 
 				status = MH_EnableHook(reinterpret_cast<void*>(dbgPrintfHook));
 				printf("dbgPrintfHook returned %d\n", status);
