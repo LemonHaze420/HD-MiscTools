@@ -90,6 +90,7 @@ static bool force_timemultiplier	= false;
 static bool force_camlock			= false;
 static bool enable_freecam			= false;
 static bool bShowNoneInTaskView		= false;
+static bool bShowActiveInTaskView   = false;
 
 static bool has_initialized			= false;
 
@@ -202,11 +203,15 @@ void EnableD3TDebug()
 {
 	DWORD_PTR base = GetProcessBaseAddress(GetCurrentProcessId());
 	DWORD d3t_1 = 1;
+	byte d3tb_1 = 1;
 	memcpy((void*)(base + SHENMUE2_V107_ENABLE_D3T_DEBUG_1), &d3t_1, sizeof(d3t_1));
 	memcpy((void*)(base + SHENMUE2_V107_ENABLE_D3T_DEBUG_2), &d3t_1, sizeof(d3t_1));
 	memcpy((void*)(base + SHENMUE2_V107_ENABLE_D3T_DEBUG_3), &d3t_1, sizeof(d3t_1));
 	//memcpy((void*)(base + SHENMUE2_V107_ENABLE_D3T_DEBUG_4), &d3t_1, sizeof(d3t_1));
 	//memcpy((void*)(base + SHENMUE2_V107_ENABLE_D3T_DEBUG_5), &d3t_1, sizeof(d3t_1)); //spams alot
+	//memcpy((void*)(base + SHENMUE2_V107_ENABLE_D3T_DEBUG_6), &d3tb_1, sizeof(d3tb_1));
+	//memcpy((void*)(base + SHENMUE2_V107_ENABLE_D3T_DEBUG_7), &d3tb_1, sizeof(d3tb_1));
+	//memcpy((void*)(base + SHENMUE2_V107_ENABLE_D3T_DEBUG_8), &d3tb_1, sizeof(d3tb_1));
 }
 
 /**
@@ -765,6 +770,18 @@ signed __int64 charDispCheck(){
 
 static bool bWaiting = false;
 static __int64 toDeleteTask = 0;
+static Task* taskCallOrder[300];
+static int taskCallOrderCounter = 0;
+
+int GetTaskCallIndex(int index) {
+	Task* taskList = (Task*)(baseAddr + SHENMUE2_V107_FIRST_TASK);
+	taskList = taskList + index;
+	for (int i = 0; i < 300; ++i) {
+		if (taskList == taskCallOrder[i]) {
+			return i;
+		}
+	}
+}
 
 __int64 MainLoop() {
 	if (toDeleteTask)
@@ -772,6 +789,20 @@ __int64 MainLoop() {
 		origCleanupTask(toDeleteTask); 
 		toDeleteTask = 0;
 	}
+
+	if (baseAddr != NULL) {
+		DWORD_PTR currentTaskPtr = *(DWORD_PTR*)(baseAddr + SHENMUE2_V107_CURRENT_TASK);
+		Task* currentTask = (Task*)currentTaskPtr;
+		if (strncmp(currentTask->taskName, "ROOT", 4) == 0) {
+			taskCallOrderCounter = 0;
+		} else {
+			if (taskCallOrderCounter < 300) {
+				taskCallOrder[taskCallOrderCounter] = currentTask;
+				taskCallOrderCounter++;
+			}
+		}
+	}
+
 	return (bWaiting?0:origMainLoop());
 }
 static bool bDrawConsole = true;
@@ -1147,10 +1178,19 @@ void RenderScene()
 				orig_sub_1404B62C0(&cID, 0x2, 0x5, (int32_t)"pKAP");
 			}
 
-			ImGui::Checkbox("Show Empty", &bShowNoneInTaskView); 
+			ImGui::Checkbox("Show Empty", &bShowNoneInTaskView); ImGui::SameLine();
+			ImGui::Checkbox("Show Active", &bShowActiveInTaskView);
 			char *taskName = new char[256];
 			for (int i = 0; i < 299; ++i) {
-				sprintf(taskName, "[ID%d] %c%c%c%c", i, g_TaskQueue.Tasks[i].taskName[0], g_TaskQueue.Tasks[i].taskName[1], g_TaskQueue.Tasks[i].taskName[2], g_TaskQueue.Tasks[i].taskName[3]);
+
+				Task& task = g_TaskQueue.Tasks[i];
+				if (bShowActiveInTaskView) {
+					if (taskCallOrder[i] == NULL) continue;
+					sprintf(taskName, "[IDX %d] %.4s", i, taskCallOrder[i]->taskName);
+					task = *taskCallOrder[i];
+				} else {
+					sprintf(taskName, "[ID %d] %.4s", i, g_TaskQueue.Tasks[i].taskName);
+				}
 
 				if (!bShowNoneInTaskView && strstr(taskName, "NONE"))
 						break;
@@ -1158,35 +1198,35 @@ void RenderScene()
 				if (ImGui::TreeNode(taskName)) {
 
 					if (ImGui::Button("Delete")) {
-						toDeleteTask = (__int64)(&g_TaskQueue.Tasks[i]);
-						//origCleanupTask((__int64)&g_TaskQueue.Tasks[i]);
+						toDeleteTask = (__int64)(&task);
+						//origCleanupTask((__int64)&task);
 					}
 
 					ImGui::InputText("Callback Adddress: ", buffer, 256, ImGuiInputTextFlags_CharsHexadecimal);		ImGui::SameLine();
 					if (ImGui::Button("Confirm")) {
 						uint64_t userCallbackAddr = strtoull(buffer, NULL, 16);
-						printf("User: 0x%I64x\nActual: 0x%I64X\n", userCallbackAddr, g_TaskQueue.Tasks[i].callbackFuncPtr);
+						printf("User: 0x%I64x\nActual: 0x%I64X\n", userCallbackAddr, &task.callbackFuncPtr);
 					}
 					ImGui::Separator();
 
 					if (ImGui::Button("Dump Task")) {
-						hex_dump(taskName, (unsigned char*)&g_TaskQueue.Tasks[i], 0x74);
+						hex_dump(taskName, (unsigned char*)&task, 0x74);
 					}
 
 					ImGui::Separator();
-					ImGui::Text("Callback Address: 0x%I64x\n", g_TaskQueue.Tasks[i].callbackFuncPtr);  if (ImGui::Button("Dump Callback")) hex_dump(taskName, (unsigned char*)&g_TaskQueue.Tasks[i].callbackFuncPtr, 0x200);
+					ImGui::Text("Callback Address: 0x%I64x\n", task.callbackFuncPtr);  if (ImGui::Button("Dump Callback")) hex_dump(taskName, (unsigned char*)&task.callbackFuncPtr, 0x200);
 					ImGui::Separator();
-					ImGui::Text("0x0C: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk1); 
-					ImGui::Text("0x0D: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk2);
-					ImGui::Text("0x10: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk3);
-					ImGui::Text("0x18: 0x%Ix\n\t", g_TaskQueue.Tasks[i].nextTask); ImGui::SameLine(); if (ImGui::Button("Dump Next Task")) hex_dump(taskName, (unsigned char*)&g_TaskQueue.Tasks[i].nextTask, 0x200);
-					ImGui::Text("0x20: 0x%Ix\n\t", g_TaskQueue.Tasks[i].unk5);
-					ImGui::Text("0x68: 0x%I64x\n", g_TaskQueue.Tasks[i].callbackParamPtr); ImGui::SameLine(); if (ImGui::Button("Dump Param")) hex_dump(taskName, (unsigned char*)&g_TaskQueue.Tasks[i].callbackParamPtr, 0x200);
+					ImGui::Text("0x0C: 0x%Ix\n\t", task.unk1);
+					ImGui::Text("0x0D: 0x%Ix\n\t", task.unk2);
+					ImGui::Text("0x10: 0x%Ix\n\t", task.unk3);
+					ImGui::Text("0x18: 0x%Ix\n\t", task.nextTask); ImGui::SameLine(); if (ImGui::Button("Dump Next Task")) hex_dump(taskName, (unsigned char*)&task.nextTask, 0x200);
+					ImGui::Text("0x20: 0x%Ix\n\t", task.unk5);
+					ImGui::Text("0x68: 0x%I64x\n", task.callbackParamPtr); ImGui::SameLine(); if (ImGui::Button("Dump Param")) hex_dump(taskName, (unsigned char*)&task.callbackParamPtr, 0x200);
 					ImGui::Separator();
 
-					if (strstr(g_TaskQueue.Tasks[i].taskName, "CHAR")) {
-						if (g_TaskQueue.Tasks[i].callbackParamPtr) {
-							sm2_cwep* cwep = reinterpret_cast<sm2_cwep*>(g_TaskQueue.Tasks[i].callbackParamPtr);
+					if (strstr(task.taskName, "CHAR")) {
+						if (task.callbackParamPtr) {
+							sm2_cwep* cwep = reinterpret_cast<sm2_cwep*>(task.callbackParamPtr);
 							ImGui::Text("X: %.04f\nY: %.04f\nZ: %.04f\n", cwep->posX, cwep->posY, cwep->posZ);
 							ImGui::InputFloat3("Warp Position", temp_charPos, 4);
 							if (ImGui::Button("Warp")) {
@@ -1198,9 +1238,9 @@ void RenderScene()
 						}
 					}
 
-					if (strstr(g_TaskQueue.Tasks[i].taskName, "CTRL")) {
-						if (g_TaskQueue.Tasks[i].callbackParamPtr) {
-							sm2_ctrl* ctrl = reinterpret_cast<sm2_ctrl*>(g_TaskQueue.Tasks[i].callbackParamPtr);
+					if (strstr(task.taskName, "CTRL")) {
+						if (task.callbackParamPtr) {
+							sm2_ctrl* ctrl = reinterpret_cast<sm2_ctrl*>(task.callbackParamPtr);
 							ImGui::Text("CWEP Address: 0x%I64x\n", ctrl->playerCwep);
 
 							ImGui::InputText("New CWEP Address: ", buffer, 256, ImGuiInputTextFlags_CharsHexadecimal);		ImGui::SameLine();
@@ -1213,9 +1253,9 @@ void RenderScene()
 						}
 					}
 
-					if (strstr(g_TaskQueue.Tasks[i].taskName, "SCEN")) {
-						if (g_TaskQueue.Tasks[i].callbackParamPtr) {
-							sm2_scen* scen = reinterpret_cast<sm2_scen*>(g_TaskQueue.Tasks[i].callbackParamPtr);
+					if (strstr(task.taskName, "SCEN")) {
+						if (task.callbackParamPtr) {
+							sm2_scen* scen = reinterpret_cast<sm2_scen*>(task.callbackParamPtr);
 							ImGui::Text("Char1: %s\n", reinterpret_cast<sm2_chid*>(scen->chidPtr1)->charID);
 							ImGui::Text("Char2: %s\n", reinterpret_cast<sm2_chid*>(scen->chidPtr2)->charID);
 							ImGui::Text("Char3: %s\n", reinterpret_cast<sm2_chid*>(scen->chidPtr3)->charID);
