@@ -1,3 +1,4 @@
+
 /*
 MIT License
 
@@ -29,6 +30,9 @@ SOFTWARE.
 #include "func_defs.h"
 
 #include "VersionManager.h"
+
+#define AUDIO_LOG_FILE "audio.log"
+bool bLogAudioEvents = false;
 
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 #define GLOBAL_HOTKEYS f9,f10,f11
@@ -234,18 +238,44 @@ ProcessSubtitleFile_SM1_t ProcessSubtitleFile_SM1_Orig;
 typedef void(__fastcall *ProcessSubtitleText_SM1_t)(char* rcx);
 ProcessSubtitleText_SM1_t ProcessSubtitleText_SM1_Orig;
 
-char* timeBuffer = { '\0' };
+char	currentScene[4] = { '\0' };
+char*	timeBuffer = { '\0' };
+char*	tmpbuffer;
+
+void log_write(const char *buffer)
+{
+	char* filename = new char[256], pwd[MAX_PATH];
+	
+	GetCurrentDirectoryA(MAX_PATH, pwd);
+	sprintf(filename, "%s\\" AUDIO_LOG_FILE, pwd);
+
+	FILE* fd = fopen(filename, "a");
+	if (fd == NULL) return;
+	
+	fputs(buffer, fd);
+	printf(buffer);
+
+	fclose(fd);
+}
 
 // Shows active subtitle audio filename
 void ProcessSubtitleFile_SM1_Hook(char* rcx, int32_t edx, int32_t r8d, struct sm1_audio_struct* r9) {
-	printf("[SM1|Audio|%s]: [FILE] %s\n", timeBuffer, rcx);
+	if (bLogAudioEvents) {
+		tmpbuffer = new char[256];
+		sprintf(tmpbuffer, "[SM1|Audio|[%s]|%s]: [FILE] %s\n", currentScene, timeBuffer, rcx);
+		log_write(tmpbuffer);
+	}
 
 	ProcessSubtitleFile_SM1_Orig(rcx, edx, r8d, r9);
 }
 
 // Shows active subtitle text [copy at 133CAFC]
 void ProcessSubtitleText_SM1_Hook(char* rcx) {
-	printf("[SM1|Audio|%s]: [SUBTITLE] %s\n", timeBuffer, rcx);
+	if (bLogAudioEvents) {
+		tmpbuffer = new char[256];
+		sprintf(tmpbuffer, "[SM1|Audio|%s]: [SUBTITLE] %s\n", timeBuffer, rcx);
+		log_write(tmpbuffer);
+	}
 
 	ProcessSubtitleText_SM1_Orig(rcx);
 }
@@ -265,19 +295,26 @@ ProcessSubtitleText_SM2_t ProcessSubtitleText_SM2_Orig;
 
 // Sows active subtitle text
 void ProcessSubtitleText_SM2_Hook(struct subtitleStruct* rcx) {
-	printf("[SM2|Audio|%s]: [SUBTITLE] %c%s\n", timeBuffer, rcx->f0, rcx->pad5433342948);
+	if (bLogAudioEvents) {
+		tmpbuffer = new char[256];
+		sprintf(tmpbuffer, "[SM2|Audio|%s]: [SUBTITLE] %c%s\n", timeBuffer, rcx->f0, rcx->pad5433342948);
+		log_write(tmpbuffer);
+	}
 
 	ProcessSubtitleText_SM2_Orig(rcx);
 }
 // Shows active subtitle audio filename
 void ProcessSubtitleFile_SM2_Hook(int64_t rcx, struct subtitleFilenameStruct* rdx) {
-	printf("[SM2|Audio|%s]: [FILE] %s\n", timeBuffer, rdx->pad11);
+	if (bLogAudioEvents) {
+		tmpbuffer = new char[256];
+		sprintf(tmpbuffer, "[SM2|Audio|%s]: [FILE] %s\n", timeBuffer, rdx->pad11);
+		log_write(tmpbuffer);
+	}
 
 	ProcessSubtitleFile_SM2_Orig(rcx, rdx);
 }
 
 //----------------------------------------------------------------------------------------------------------
-char currentScene[4] = { '\0' };
 
 void EnableD3TDebug()
 {
@@ -319,7 +356,7 @@ BOOL WINAPI DllMain(HINSTANCE hInstance, DWORD dwReason, LPVOID)
 	
 	if (strstr(VersionManager::singleton()->getGameId(), "sm1")) {
 		if (VersionManager::singleton()->getVersion() != Version::Coconut107)
-			bUnsupported = true;
+			bUnsupported = true; 
 	}
 	else if (strstr(VersionManager::singleton()->getGameId(), "sm2")) {
 		if (VersionManager::singleton()->getVersion() != Version::Mango107)
@@ -330,7 +367,7 @@ BOOL WINAPI DllMain(HINSTANCE hInstance, DWORD dwReason, LPVOID)
 	else bUnsupported = true;
 
 	if (bUnsupported) {
-		MessageBoxA(NULL, "Unsupported version!", "", MB_OK);
+		MessageBoxA(NULL, "Unsupported version!", "Shenmue Misc. Tools v2.00", MB_OK);
 		return FALSE;
 	}
 
@@ -1277,6 +1314,8 @@ void RenderScene()
 				ImGui::Text("Frame: %0.2fms\nFPS: %0.2f\n", fFrameTime, fFPS);
 				ImGui::Separator();
 
+				ImGui::Checkbox("Enable Audio Event Log (audio.log)", &bLogAudioEvents);
+
 				ImGui::Checkbox("Enable Patches", &ingame_status);	ImGui::SameLine();
 				ImGui::Text("\t\tDO NOT ENABLE PATCHES WHILST IN MENU");
 				ImGui::Separator();
@@ -1314,14 +1353,18 @@ void RenderScene()
 					{
 						if (sceneID > 0)
 						{
-							*(BYTE*)(baseAddr + 0x64C89A8) = 7;
-
-							*(BYTE*)(baseAddr + SHENMUE1_V107_SCENE_ID) = (BYTE)user_sceneID;
-							*(BYTE*)(baseAddr + SHENMUE1_V107_ENTRY_ID) = (BYTE)user_entryID;
-
+							// init..
+							*(int*)(baseAddr + SHENMUE1_V107_WARP_INIT) = 7;
+							
+							// config..
+							*(int*)(baseAddr + SHENMUE1_V107_SCENE_ID) = user_sceneID;
+							*(int*)(baseAddr + SHENMUE1_V107_ENTRY_ID) = user_entryID;
 							memcpy((void*)(baseAddr + SHENMUE1_V107_AREA_ID_STRING), (void*)buffer, 4);
 
-							*(BYTE*)(baseAddr + SHENMUE1_V107_TRIGGER_AREA_WARP) = 1;
+							// go..
+							*(int*)(baseAddr + SHENMUE1_V107_TRIGGER_AREA_WARP) = 1;
+
+							ingame_status = false;
 						}
 					}
 					ImGui::Separator();
@@ -1502,6 +1545,7 @@ void RenderScene()
 				ImGui::Checkbox("Enable Tasks in Console", &show_tasks_in_console);	ImGui::SameLine();
 				ImGui::Checkbox("Enable Logger in Console", &show_logger_in_console);
 				ImGui::Checkbox("Enable NPC Logger", &enable_npc_logger); //ImGui::SameLine();
+				ImGui::Checkbox("Enable Audio Event Log (audio.log)", &bLogAudioEvents);
 				ImGui::Separator();
 
 				ImGui::Checkbox("Enable Patches", &ingame_status);	ImGui::SameLine();
