@@ -295,4 +295,4 @@ struct sm2_player {
 struct charID {
 	signed char pad16[16];
 	char ID[4];
-};
+}; 

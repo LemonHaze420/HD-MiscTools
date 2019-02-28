@@ -21,7 +21,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-
+ 
 #pragma once
 
 #define WIN32_LEAN_AND_MEAN
@@ -35,6 +35,7 @@ SOFTWARE.
 #include <Indicium/Engine/IndiciumDirect3D9.h>
 #include <Indicium/Engine/IndiciumDirect3D10.h>
 #include <Indicium/Engine/IndiciumDirect3D11.h>
+
 
 typedef LRESULT(WINAPI *t_WindowProc)(
 	_In_ HWND hWnd,

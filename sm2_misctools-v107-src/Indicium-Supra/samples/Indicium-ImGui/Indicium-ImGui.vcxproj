@@ -128,7 +128,8 @@
       <AdditionalDependencies>Indicium-Supra.lib;Iphlpapi.lib;d3d9.lib;d3d10.lib;d3d11.lib;d3dcompiler.lib;dxgi.lib;dxguid.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <PostBuildEvent>
-      <Command>xcopy /Q /Y $(SolutionDir)bin\$(PlatformShortName)\Forklift.dll "E:\Games\Shenmue I and II\sm2\Forklift.dll"</Command>
+      <Command>xcopy /Q /Y $(SolutionDir)bin\$(PlatformShortName)\Forklift.dll "E:\Games\Shenmue I and II\sm2\Forklift.dll"
+xcopy /Q /Y $(SolutionDir)bin\$(PlatformShortName)\Forklift.dll "E:\Games\Shenmue I and II\sm1\Forklift.dll"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -179,6 +180,7 @@
     <ClCompile Include="imgui\imgui_impl_dx11.cpp" />
     <ClCompile Include="imgui\imgui_impl_dx9.cpp" />
     <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="VersionManager.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="addrs.h" />
@@ -194,6 +196,7 @@
     <ClInclude Include="imgui\stb_textedit.h" />
     <ClInclude Include="imgui\stb_truetype.h" />
     <ClInclude Include="structs.h" />
+    <ClInclude Include="VersionManager.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Indicium-ImGui.ini" />
