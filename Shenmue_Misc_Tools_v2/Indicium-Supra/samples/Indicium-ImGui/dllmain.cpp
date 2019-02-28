@@ -1283,7 +1283,7 @@ void hex_dump(char *str, unsigned char *buf, int size)
 
 char* user_mapID, *mapID;
 int sceneID = 1, entryID = 0;
-int user_sceneID = 1, user_entryID = 0;
+int user_sceneID = 1, user_entryID = 1;
 
 void RenderScene()
 {
