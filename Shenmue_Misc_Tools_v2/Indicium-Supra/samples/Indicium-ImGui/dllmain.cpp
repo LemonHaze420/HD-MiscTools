@@ -31,8 +31,13 @@ SOFTWARE.
 
 #include "VersionManager.h"
 
-#define AUDIO_LOG_FILE "audio.log"
+#define AUDIO_LOG_FILE "events.log"
+#define EVENT_LOG_FILE "events.log"
+
 bool bLogAudioEvents = false;
+bool bLogMapEvents = false;
+
+bool bBypassBedtime = false;
 
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 #define GLOBAL_HOTKEYS f9,f10,f11
@@ -151,8 +156,15 @@ bool show_logger_in_console = false;
 bool enable_npc_logger = false;
 bool npc_logger_initialized = false;
 uint16_t npc_logger_fix = SHENMUE2_V107_ENABLE_NPC_LOGGER_FIX_INS;
+
 char fps_fix[]			= { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
 char sm1_60fps_fix[]	= { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
+
+char bypass_bedtime_sm1[] = { 0xE9, 0xB7, 0x02, 0x00, 0x00, 0x90, 0x40, 0x84, 0xCE };
+char bypass_bedtime_sm1_orig[] = { 0x0F, 0x85, 0xB6, 0x02, 0x00, 0x00, 0x40, 0x84, 0xCE };
+
+char bypass_bedtime_sm2[] = { 0xE9, 0xF2, 0x00, 0x00, 0x00, 0x90, 0x0F, 0xBE, 0x05 };
+char bypass_bedtime_sm2_orig[] = { 0x0F, 0x85, 0xF1, 0x00, 0x00, 0x00, 0x0F, 0xBE, 0x05 };
 
 TaskQueue g_TaskQueue;
 sm2_ctrl* g_MapControl;
@@ -233,39 +245,70 @@ struct subtitleStruct {
 	signed char f5433342948;
 };
 
+struct s1_new {
+	char pad24[24];
+	int32_t f24;
+};
+
+struct s0_new {
+	char pad8[8];
+	struct s1_new* f8;
+};
+
+
 typedef void(__fastcall *ProcessSubtitleFile_SM1_t)(char* rcx, int32_t edx, int32_t r8d, struct sm1_audio_struct* r9);
-ProcessSubtitleFile_SM1_t ProcessSubtitleFile_SM1_Orig;
 typedef void(__fastcall *ProcessSubtitleText_SM1_t)(char* rcx);
+
+typedef void(__fastcall *sub_14018FFF0_t)(char *a1, __int64 a2, __int64 a3, signed int *a4);
+
+ProcessSubtitleFile_SM1_t ProcessSubtitleFile_SM1_Orig;
 ProcessSubtitleText_SM1_t ProcessSubtitleText_SM1_Orig;
 
-char	currentScene[4] = { '\0' };
+sub_14018FFF0_t sub_14018FFF0_Orig;
+
+char*	currentScene = { '\0' };
 char*	timeBuffer = { '\0' };
 char*	tmpbuffer;
 
-void log_write(const char *buffer)
+void log_write(const char* fname, const char *buffer)
 {
-	char* filename = new char[256], pwd[MAX_PATH];
-	
+	char* filename = new char[MAX_PATH], pwd[MAX_PATH];
+
 	GetCurrentDirectoryA(MAX_PATH, pwd);
-	sprintf(filename, "%s\\" AUDIO_LOG_FILE, pwd);
+	sprintf(filename, "%s\\%s", pwd, fname);
 
 	FILE* fd = fopen(filename, "a");
 	if (fd == NULL) return;
-	
+
 	fputs(buffer, fd);
 	printf(buffer);
 
 	fclose(fd);
 }
 
+struct mapID{
+	char a, b, c, d;
+}mID;
+int sceneID = 0;
+
+void sub_14018FFF0_Hook(char *a1, __int64 a2, __int64 a3, signed int *a4)
+{
+	if (bLogMapEvents) {
+		tmpbuffer = new char[256];	
+		sprintf(tmpbuffer, "[SM1|Event|SCENE-%d|MAP-%c%c%c%c|%s]: [EVENT] %s\t%s\n", sceneID, mID.a, mID.b, mID.c, mID.d, timeBuffer, a1, reinterpret_cast<char*>(a3));
+		log_write(EVENT_LOG_FILE, tmpbuffer);
+	}
+	sub_14018FFF0_Orig(a1, a2, a3, a4);
+}
+
 // Shows active subtitle audio filename
 void ProcessSubtitleFile_SM1_Hook(char* rcx, int32_t edx, int32_t r8d, struct sm1_audio_struct* r9) {
 	if (bLogAudioEvents) {
 		tmpbuffer = new char[256];
-		sprintf(tmpbuffer, "[SM1|Audio|[%s]|%s]: [FILE] %s\n", currentScene, timeBuffer, rcx);
-		log_write(tmpbuffer);
-	}
 
+		sprintf(tmpbuffer, "[SM1|Audio|SCENE-%d[%s]|%s]: [FILE] %s\n", sceneID, mID.a, mID.b, mID.c, mID.d, timeBuffer, rcx);
+		log_write(AUDIO_LOG_FILE, tmpbuffer);
+	}
 	ProcessSubtitleFile_SM1_Orig(rcx, edx, r8d, r9);
 }
 
@@ -273,10 +316,10 @@ void ProcessSubtitleFile_SM1_Hook(char* rcx, int32_t edx, int32_t r8d, struct sm
 void ProcessSubtitleText_SM1_Hook(char* rcx) {
 	if (bLogAudioEvents) {
 		tmpbuffer = new char[256];
-		sprintf(tmpbuffer, "[SM1|Audio|%s]: [SUBTITLE] %s\n", timeBuffer, rcx);
-		log_write(tmpbuffer);
-	}
 
+		sprintf(tmpbuffer, "[SM1|Audio|SCENE-%d[%s]%s]: [SUBTITLE] %s\n", sceneID, mID.a, mID.b, mID.c, mID.d, timeBuffer, rcx);
+		log_write(AUDIO_LOG_FILE, tmpbuffer);
+	}
 	ProcessSubtitleText_SM1_Orig(rcx);
 }
 //----------------------------------------------------------------------------------------------------------
@@ -298,9 +341,8 @@ void ProcessSubtitleText_SM2_Hook(struct subtitleStruct* rcx) {
 	if (bLogAudioEvents) {
 		tmpbuffer = new char[256];
 		sprintf(tmpbuffer, "[SM2|Audio|%s]: [SUBTITLE] %c%s\n", timeBuffer, rcx->f0, rcx->pad5433342948);
-		log_write(tmpbuffer);
+		log_write(AUDIO_LOG_FILE, tmpbuffer);
 	}
-
 	ProcessSubtitleText_SM2_Orig(rcx);
 }
 // Shows active subtitle audio filename
@@ -308,9 +350,8 @@ void ProcessSubtitleFile_SM2_Hook(int64_t rcx, struct subtitleFilenameStruct* rd
 	if (bLogAudioEvents) {
 		tmpbuffer = new char[256];
 		sprintf(tmpbuffer, "[SM2|Audio|%s]: [FILE] %s\n", timeBuffer, rdx->pad11);
-		log_write(tmpbuffer);
+		log_write(AUDIO_LOG_FILE, tmpbuffer);
 	}
-
 	ProcessSubtitleFile_SM2_Orig(rcx, rdx);
 }
 
@@ -1265,7 +1306,7 @@ __int64 __fastcall OtherHookedLoggerFunc(char* msg)
 }
 void __fastcall hooked_sub_1404B62C0(struct charID* a1, int32_t edx, int32_t r8d, int32_t r9d)
 {
-	//printf("sub_1404B62C0(\"%c%c%c%c\", 0x%X, 0x%X, \"%c%c%c%c\")\n", a1->ID[0], a1->ID[1] , a1->ID[2], a1->ID[3], edx, r8d, r9d & 0xFF, (r9d >> 8) & 0xFF, (r9d >> 16) & 0xFF, (r9d >> 24) & 0xFF);
+	printf("sub_1404B62C0(\"%c%c%c%c\", 0x%X, 0x%X, \"%c%c%c%c\")\n", a1->ID[0], a1->ID[1] , a1->ID[2], a1->ID[3], edx, r8d, r9d & 0xFF, (r9d >> 8) & 0xFF, (r9d >> 16) & 0xFF, (r9d >> 24) & 0xFF);
 	orig_sub_1404B62C0(a1, edx, r8d, r9d);
 }
 void hex_dump(char *str, unsigned char *buf, int size)
@@ -1282,7 +1323,7 @@ void hex_dump(char *str, unsigned char *buf, int size)
 }
 
 char* user_mapID, *mapID;
-int sceneID = 1, entryID = 0;
+//int sceneID = 1, entryID = 0;
 int user_sceneID = 1, user_entryID = 1;
 
 void RenderScene()
@@ -1305,7 +1346,6 @@ void RenderScene()
 		{
 			ImGui::Begin("Shenmue 1 v1.07 Misc Tools - LemonHaze", nullptr);
 			{
-				ImGui::Text("F9  : Toggle Tasks Window");
 				ImGui::Text("F10 : Toggle Main Window");
 				ImGui::Text("F11 : Toggle Patches");
 				ImGui::Separator();
@@ -1315,6 +1355,7 @@ void RenderScene()
 				ImGui::Separator();
 
 				ImGui::Checkbox("Enable Audio Event Log (audio.log)", &bLogAudioEvents);
+				ImGui::Checkbox("Enable Map Event Log (events.log)", &bLogMapEvents);
 
 				ImGui::Checkbox("Enable Patches", &ingame_status);	ImGui::SameLine();
 				ImGui::Text("\t\tDO NOT ENABLE PATCHES WHILST IN MENU");
@@ -1340,8 +1381,15 @@ void RenderScene()
 
 					ImGui::SliderInt("Money", &player_money, 0, 10000);
 					ImGui::SliderInt("SEGA Coins", &sega_coins, 0, 10000);
+					ImGui::Checkbox("Bypass Bedtime", &bBypassBedtime);
+
 					ImGui::Separator();
 					
+					ImGui::Text("Current Map");
+					ImGui::Separator();
+
+					ImGui::Text("Scene: %d\nMap ID: %c%c%c%c\n", sceneID, mID.a, mID.b, mID.c, mID.d);
+
 					ImGui::Text("Map Warping");
 					ImGui::Separator();
 
@@ -1393,8 +1441,11 @@ void RenderScene()
 
 					ImGui::Text("Framerate");
 					ImGui::Separator();
-					ImGui::Checkbox(">=200 FPS", &force_60fps);
-					ImGui::Checkbox(">=60 FPS", &force_60fps2);
+					ImGui::Checkbox("<=200 FPS", &force_60fps);
+					ImGui::Checkbox("<=60 FPS", &force_60fps2);
+					if (force_60fps && force_60fps2)
+						force_60fps2 = false;
+
 					ImGui::Separator();
 
 					ImGui::Text("Time");
@@ -1578,6 +1629,9 @@ void RenderScene()
 
 					ImGui::SliderInt("Money", &player_money, 0, 10000);
 					ImGui::SliderInt("SEGA Coins", &sega_coins, 0, 10000);
+
+					ImGui::Checkbox("Bypass Bedtime", &bBypassBedtime);
+
 					ImGui::Separator();
 
 					ImGui::Text("Camera");
@@ -1602,8 +1656,11 @@ void RenderScene()
 
 					ImGui::Text("Framerate");
 					ImGui::Separator();
-					ImGui::Checkbox(">=200 FPS", &force_60fps);
-					ImGui::Checkbox(">=60 FPS", &force_60fps2);
+					ImGui::Checkbox("<=200 FPS", &force_60fps);
+					ImGui::Checkbox("<=60 FPS", &force_60fps2);
+					if (force_60fps && force_60fps2)
+						force_60fps2 = false;
+
 					ImGui::Separator();
 
 					ImGui::Text("Time");
@@ -1705,16 +1762,24 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 			if (gameID == 1)
 			{
 				DWORD_PTR ProcessSubtitleFile_SM1_Offset = baseAddr + 0x912D0;
-				MH_CreateHook(reinterpret_cast<void**>(ProcessSubtitleFile_SM1_Offset), ProcessSubtitleFile_SM1_Hook, reinterpret_cast<void**>(&ProcessSubtitleFile_SM1_Orig));
+				DWORD_PTR ProcessSubtitleText_SM1_Offset = baseAddr + 0x65180;
 
+				DWORD_PTR sub_14018FFF0_Offset = baseAddr + 0x18FFF0;
+				DWORD_PTR sub_140190350_Offset = baseAddr + 0x190350;
+								
+				MH_CreateHook(reinterpret_cast<void**>(ProcessSubtitleFile_SM1_Offset), ProcessSubtitleFile_SM1_Hook, reinterpret_cast<void**>(&ProcessSubtitleFile_SM1_Orig));
+				MH_CreateHook(reinterpret_cast<void**>(ProcessSubtitleText_SM1_Offset), ProcessSubtitleText_SM1_Hook, reinterpret_cast<void**>(&ProcessSubtitleText_SM1_Orig));
+				
+				MH_CreateHook(reinterpret_cast<void**>(sub_14018FFF0_Offset), sub_14018FFF0_Hook, reinterpret_cast<void**>(&sub_14018FFF0_Orig));
+				
 				MH_STATUS status = MH_EnableHook(reinterpret_cast<void*>(ProcessSubtitleFile_SM1_Offset));
 				printf("ProcessSubtitleFile_SM1 returned %d\n", status);
 
-				DWORD_PTR ProcessSubtitleText_SM1_Offset = baseAddr + 0x65180;
-				MH_CreateHook(reinterpret_cast<void**>(ProcessSubtitleText_SM1_Offset), ProcessSubtitleText_SM1_Hook, reinterpret_cast<void**>(&ProcessSubtitleText_SM1_Orig));
-
 				status = MH_EnableHook(reinterpret_cast<void*>(ProcessSubtitleText_SM1_Offset));
 				printf("ProcessSubtitleText_SM1 returned %d\n", status);
+
+				status = MH_EnableHook(reinterpret_cast<void*>(sub_14018FFF0_Offset));
+				printf("sub_14018FFF0 returned %d\n", status);
 
 				has_initialized = true;
 			}
@@ -1821,14 +1886,11 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 			campos.x = *(float*)(baseAddr + SHENMUE1_V107_CAMPOSX);
 			campos.y = *(float*)(baseAddr + SHENMUE1_V107_CAMPOSY);
 			campos.z = *(float*)(baseAddr + SHENMUE1_V107_CAMPOSZ);
-
-			mapID	= *(char**)(baseAddr + SHENMUE1_V107_AREA_ID_STRING);
-			sceneID = *(BYTE*)(baseAddr + SHENMUE1_V107_SCENE_ID);
-			entryID = *(BYTE*)(baseAddr + SHENMUE1_V107_ENTRY_ID);
-
+					   
 			fieldofview = *(float*)(baseAddr + SHENMUE1_V107_FOV);
 			
-			sceneID = *(char*)(baseAddr + 0x133D16C);
+			sceneID = *(int*)(GetProcessBaseAddress(GetCurrentProcessId()) + 0x9F502D4);
+			mID = *(struct mapID*)(GetProcessBaseAddress(GetCurrentProcessId()) + 0x9F502E0);
 
 			if (!has_values_initialized)
 			{
@@ -1871,7 +1933,25 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 					memcpy((void*)(baseAddr + SHENMUE1_V107_FOV), &temp_fieldofview, sizeof(float));
 				}
 
-				//WriteProcessMemoryWrapper(SHENMUE1_V107_60FPS_FIX, &sm1_60fps_fix, sizeof(sm1_60fps_fix));
+				WriteProcessMemoryWrapper(SHENMUE1_V107_60FPS_FIX, &sm1_60fps_fix, sizeof(sm1_60fps_fix));
+
+				if (bBypassBedtime)
+				{
+					WriteProcessMemoryWrapper(SHENMUE1_V107_BYPASS_BEDTIME, &bypass_bedtime_sm1, sizeof(bypass_bedtime_sm1));
+				}
+				else
+				{
+					WriteProcessMemoryWrapper(SHENMUE1_V107_BYPASS_BEDTIME, &bypass_bedtime_sm1_orig, sizeof(bypass_bedtime_sm1_orig));
+				}
+				
+				if (force_freezetime)
+				{
+					*(int*)(baseAddr + SHENMUE1_V107_FREEZETIME) = 1;
+				}
+				else
+				{
+					*(int*)(baseAddr + SHENMUE1_V107_FREEZETIME) = 0;
+				}
 
 				if (baseAddr != NULL && force_timemultiplier) {
 					unsigned char const * p = reinterpret_cast<unsigned char const *>(&timeMultiplier);
@@ -1977,7 +2057,14 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 				{
 					memcpy((void*)(baseAddr + SHENMUE2_V107_CAMDISTANCE2), &temp_user_cameradistance[1], sizeof(float));
 				}
-
+				if (bBypassBedtime)
+				{
+					WriteProcessMemoryWrapper(SHENMUE2_V107_BYPASS_BEDTIME, &bypass_bedtime_sm2, sizeof(bypass_bedtime_sm2));
+				}
+				else
+				{
+					WriteProcessMemoryWrapper(SHENMUE2_V107_BYPASS_BEDTIME, &bypass_bedtime_sm2_orig, sizeof(bypass_bedtime_sm2_orig));
+				}
 				if (force_60fps)
 				{
 					memset((void*)(baseAddr + SHENMUE2_V107_60FPS), 1, 1);
