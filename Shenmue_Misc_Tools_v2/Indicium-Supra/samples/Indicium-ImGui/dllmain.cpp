@@ -1665,11 +1665,16 @@ void RenderScene()
 
 					ImGui::Text("Framerate");
 					ImGui::Separator();
-					ImGui::Checkbox("<=200 FPS", &force_60fps);
-					ImGui::Checkbox("<=60 FPS", &force_60fps2);
-					if (force_60fps && force_60fps2)
+					
+					if (ImGui::Checkbox("<=200 FPS", &force_60fps))
+					{
 						force_60fps2 = false;
-
+					}
+					if (ImGui::Checkbox("<=60 FPS", &force_60fps2))
+					{
+						force_60fps = false;
+					}
+					
 					ImGui::Separator();
 
 					ImGui::Text("Time");
