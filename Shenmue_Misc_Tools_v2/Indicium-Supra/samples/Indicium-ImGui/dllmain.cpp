@@ -1326,6 +1326,8 @@ char* user_mapID, *mapID;
 //int sceneID = 1, entryID = 0;
 int user_sceneID = 1, user_entryID = 1;
 
+bool bStabilizeFPS = false;
+
 void RenderScene()
 {
 	static std::once_flag flag;
@@ -1451,6 +1453,7 @@ void RenderScene()
 					{
 						force_60fps = false;
 					}
+					ImGui::Checkbox("Stabilize", &bStabilizeFPS);
 
 					ImGui::Separator();
 
@@ -1940,6 +1943,15 @@ IMGUI_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wPa
 				}
 
 				WriteProcessMemoryWrapper(SHENMUE1_V107_60FPS_FIX, &sm1_60fps_fix, sizeof(sm1_60fps_fix));
+
+				if (bStabilizeFPS)
+				{
+					memset((void*)(baseAddr + 0xD87DA6), 1, 1);
+				}
+				else
+				{
+					memset((void*)(baseAddr + 0xD87DA6), 0, 1);
+				}
 
 				if (bBypassBedtime)
 				{
